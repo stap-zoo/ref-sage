@@ -99,3 +99,9 @@ def hash_sponge_pi(perm, data: list, state_size: int, rate: int, capacity: int, 
         if len(output) < digest_size:
             state = perm(state)
     return output[:digest_size]
+
+
+def hash_sponge_safe(perm, data: list, state_size: int, rate: int, capacity: int, digest_size: int, IV: list = None, pad=pad_zero, to_field=lambda x: x) -> list:
+    # SAFE: Sponge API for Field Elements (https://eprint.iacr.org/2023/522)
+    # TODO implement
+    return hash_sponge(perm, data, state_size, rate, capacity, digest_size, IV, pad, to_field)
