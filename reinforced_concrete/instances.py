@@ -1,16 +1,19 @@
 from fields import BLS12_381_SCALAR, BN254_SCALAR, ST
 from reinforced_concrete.params import ReinforcedConcreteParams
+from utils import circulant
 
 # ---------------------------------------------------------------------------
 # BLS12-381 instance
 # ---------------------------------------------------------------------------
 
-BLS12_SI = [
+RC_BLS12_SI = [
     679, 703, 688, 691, 702, 703, 697, 698, 695, 701, 701, 701, 699, 694, 701, 694, 700, 688,
     700, 693, 691, 695, 679, 668, 694, 696, 693,
 ]
-BLS12_AB = [1, 3, 2, 4]
-BLS12_LUT = [
+
+RC_BLS12_AB = [[1, 3], [2, 4]]
+
+RC_BLS12_LUT = [
     171, 178, 483, 527, 653, 408, 197, 599, 300, 607, 403, 511, 579, 520, 591, 412, 261, 559,
     551, 154, 180, 138, 596, 150, 276, 271, 48, 168, 362, 637, 467, 164, 536, 554, 287, 530,
     431, 92, 654, 518, 323, 572, 624, 4, 258, 439, 430, 495, 534, 222, 545, 31, 44, 18, 80, 55,
@@ -48,18 +51,36 @@ BLS12_LUT = [
     103, 144, 355, 182, 346, 284, 200, 634, 244, 140, 337, 325, 319, 532, 394, 118, 485, 301,
     623, 190, 523, 515, 576, 141, 228,
 ]
-RC_BLS_PARAMS = ReinforcedConcreteParams(BLS12_381_SCALAR.p, alpha=BLS12_381_SCALAR.alpha, alpha_inv=BLS12_381_SCALAR.alpha_inv, pre_rounds=3, bars_rounds=1, post_rounds=3, si=BLS12_SI, lut=BLS12_LUT, ab=BLS12_AB)
+
+RC_BLS12_T3 = ReinforcedConcreteParams(
+    p=BLS12_381_SCALAR.p,
+    alpha=BLS12_381_SCALAR.alpha,
+    alpha_inv=BLS12_381_SCALAR.alpha_inv,
+    R_pre=3,
+    R_bars=1,
+    R_post=3,
+    si=RC_BLS12_SI,
+    LUT=RC_BLS12_LUT,
+    COEFFS=RC_BLS12_AB,
+    t=3,
+    M=circulant([2, 1, 1]),
+    r=1,
+    c=2,
+    d=1,
+)
 
 # ---------------------------------------------------------------------------
-# BN254 instace
+# BN254 instance
 # ---------------------------------------------------------------------------
 
-BN254_SI = [
+RC_BN254_SI = [
     673, 678, 667, 683, 680, 655, 683, 683, 681, 683, 675, 668, 675, 677, 680, 681, 669, 683,
     681, 677, 668, 654, 663, 666, 656, 658, 651,
 ]
-BN254_AB = [1, 3, 2, 4]
-BN254_LUT = [
+
+RC_BN254_AB = [[1, 3], [2, 4]]
+
+RC_BN254_LUT = [
     377, 222, 243, 537, 518, 373, 152, 435, 526, 352, 2, 410, 513, 545, 567, 354, 405, 80, 233,
     261, 49, 240, 568, 74, 131, 349, 146, 278, 330, 372, 43, 432, 247, 583, 105, 203, 637, 307,
     29, 597, 633, 198, 519, 95, 148, 62, 68, 312, 616, 357, 234, 433, 154, 90, 163, 249, 101,
@@ -96,15 +117,33 @@ BN254_LUT = [
     389, 129, 566, 63, 486, 541, 362, 210, 551, 348, 279, 538, 347, 504, 124, 564, 443, 412,
     226, 227, 248, 588,
 ]
-RC_BN_PARAMS  = ReinforcedConcreteParams(BN254_SCALAR.p,  alpha=BLS12_381_SCALAR.alpha, alpha_inv=BN254_SCALAR.alpha_inv, pre_rounds=3, bars_rounds=1, post_rounds=3, si=BN254_SI,  lut=BN254_LUT,  ab=BN254_AB)
+
+RC_BN254_T3 = ReinforcedConcreteParams(
+    p=BN254_SCALAR.p,
+    alpha=BLS12_381_SCALAR.alpha,
+    alpha_inv=BN254_SCALAR.alpha_inv,
+    R_pre=3,
+    R_bars=1,
+    R_post=3,
+    si=RC_BN254_SI,
+    LUT=RC_BN254_LUT,
+    COEFFS=RC_BN254_AB,
+    t=3,
+    M=circulant([2, 1, 1]),
+    r=2,
+    c=1,
+    d=1,
+)
 
 # ---------------------------------------------------------------------------
 # ST instance  (p = 509 * 2^241 + 1, alpha = 3, base-1024 decomposition)
 # ---------------------------------------------------------------------------
 
-ST_SI = [1024] * 24 + [1023]  # last digit mod 1023, rest mod 1024
-ST_AB = [1, 2, 3, 4]  # a_coeffs=[1,2], b_coeffs=[3,4]
-ST_LUT = [
+RC_ST_SI = [1024] * 24 + [1023]  # last digit mod 1023, rest mod 1024
+
+RC_ST_AB = [[1, 2], [3, 4]]  # a_coeffs=[1,2], b_coeffs=[3,4]
+
+RC_ST_LUT = [
     849, 68, 27, 909, 988, 687, 828, 507, 847, 380, 656, 379, 340, 296, 974, 3, 338, 355, 263,
     968, 754, 119, 442, 231, 629, 634, 938, 484, 73, 954, 704, 20, 1006, 447, 977, 591, 528,
     593, 103, 69, 236, 45, 843, 461, 762, 158, 908, 661, 751, 874, 545, 96, 35, 802, 738, 495,
@@ -162,4 +201,20 @@ ST_LUT = [
     394, 373, 16, 223, 253, 354, 509, 378, 578, 187, 291, 308, 415, 964, 427, 915, 547, 144,
     897, 935, 88, 840, 286, 206, 321, 654,
 ]
-RC_ST_PARAMS  = ReinforcedConcreteParams(ST.p, alpha=ST.alpha, alpha_inv=ST.alpha_inv, pre_rounds=3, bars_rounds=1, post_rounds=3, si=ST_SI, lut=ST_LUT, ab=ST_AB)
+
+RC_ST_T3 = ReinforcedConcreteParams(
+    p=ST.p,
+    alpha=ST.alpha,
+    alpha_inv=ST.alpha_inv,
+    R_pre=3,
+    R_bars=1,
+    R_post=3,
+    si=RC_ST_SI,
+    LUT=RC_ST_LUT,
+    COEFFS=RC_ST_AB,
+    t=3,
+    M=circulant([2, 1, 1]),
+    r=2,
+    c=1,
+    d=1,
+)

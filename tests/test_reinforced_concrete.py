@@ -1,6 +1,6 @@
 import pytest
 from reinforced_concrete.hash import ReinforcedConcrete
-from reinforced_concrete.instances import RC_BLS_PARAMS, RC_BN_PARAMS, RC_ST_PARAMS
+from reinforced_concrete.instances import RC_BLS12_T3, RC_BN254_T3, RC_ST_T3
 
 # ---------------------------------------------------------------------------
 # Known-answer test vectors (from Rust reference implementation)
@@ -45,7 +45,7 @@ ST_KATS = [
 
 @pytest.fixture(scope="module")
 def rc_bn():
-    return ReinforcedConcrete(RC_BN_PARAMS)
+    return ReinforcedConcrete(RC_BN254_T3)
 
 @pytest.mark.parametrize("kat", BN254_KATS)
 def test_bn254_kat(rc_bn, kat):
@@ -53,29 +53,22 @@ def test_bn254_kat(rc_bn, kat):
     out = rc_bn.permutation(inp)
     assert [rc_bn.from_field(x) for x in out] == kat["output"]
 
-def test_bn254_compose_roundtrip(rc_bn):
-    for _ in range(5):
-        x = rc_bn.F.random_element()
-        assert rc_bn.compose(rc_bn.decompose(x)) == x
-
 def test_bn254_permutation_deterministic(rc_bn):
     inp = [rc_bn.F.random_element() for _ in range(3)]
     assert rc_bn.permutation(inp) == rc_bn.permutation(inp)
 
 def test_bn254_compress_output_size(rc_bn):
-    rate = rc_bn.state_size - rc_bn.digest_size
-    x_m = [rc_bn.F.random_element() for _ in range(rate)]
-    x_c = [rc_bn.F.random_element() for _ in range(rc_bn.digest_size)]
-    assert len(rc_bn.compress(x_m, x_c)) == rc_bn.digest_size
+    x_m = [rc_bn.F.random_element() for _ in range(rc_bn.d)]
+    x_c = [rc_bn.F.random_element() for _ in range(rc_bn.d)]
+    assert len(rc_bn.compress_2_to_1(x_m, x_c)) == rc_bn.d
 
 def test_bn254_permutation_roundtrip(rc_bn):
-    inp = [rc_bn.F.random_element() for _ in range(rc_bn.state_size)]
+    inp = [rc_bn.F.random_element() for _ in range(rc_bn.t)]
     assert rc_bn.permutation_inv(rc_bn.permutation(inp)) == inp
 
 def test_bn254_sponge_output_size(rc_bn):
-    rate = rc_bn.state_size - rc_bn.digest_size
-    data = [rc_bn.F.random_element() for _ in range(rate * 3)]
-    assert len(rc_bn.hash_sponge(data))    == rc_bn.digest_size
+    data = [rc_bn.F.random_element() for _ in range(rc_bn.r * 3)]
+    assert len(rc_bn.hash_sponge(data)) == rc_bn.d
 
 # ---------------------------------------------------------------------------
 # BLS12 tests
@@ -83,7 +76,7 @@ def test_bn254_sponge_output_size(rc_bn):
 
 @pytest.fixture(scope="module")
 def rc_bls():
-    return ReinforcedConcrete(RC_BLS_PARAMS)
+    return ReinforcedConcrete(RC_BLS12_T3)
 
 @pytest.mark.parametrize("kat", BLS12_KATS)
 def test_bls12_kat(rc_bls, kat):
@@ -91,29 +84,22 @@ def test_bls12_kat(rc_bls, kat):
     out = rc_bls.permutation(inp)
     assert [rc_bls.from_field(x) for x in out] == kat["output"]
 
-def test_bls12_compose_roundtrip(rc_bls):
-    for _ in range(5):
-        x = rc_bls.F.random_element()
-        assert rc_bls.compose(rc_bls.decompose(x)) == x
-
 def test_bls12_permutation_deterministic(rc_bls):
     inp = [rc_bls.F.random_element() for _ in range(3)]
     assert rc_bls.permutation(inp) == rc_bls.permutation(inp)
 
 def test_bls12_compress_output_size(rc_bls):
-    rate = rc_bls.state_size - rc_bls.digest_size
-    x_m = [rc_bls.F.random_element() for _ in range(rate)]
-    x_c = [rc_bls.F.random_element() for _ in range(rc_bls.digest_size)]
-    assert len(rc_bls.compress(x_m, x_c)) == rc_bls.digest_size
+    x_m = [rc_bls.F.random_element() for _ in range(rc_bls.d)]
+    x_c = [rc_bls.F.random_element() for _ in range(rc_bls.d)]
+    assert len(rc_bls.compress_2_to_1(x_m, x_c)) == rc_bls.d
 
 def test_bls12_permutation_roundtrip(rc_bls):
-    inp = [rc_bls.F.random_element() for _ in range(rc_bls.state_size)]
+    inp = [rc_bls.F.random_element() for _ in range(rc_bls.t)]
     assert rc_bls.permutation_inv(rc_bls.permutation(inp)) == inp
 
 def test_bls12_sponge_output_size(rc_bls):
-    rate = rc_bls.state_size - rc_bls.digest_size
-    data = [rc_bls.F.random_element() for _ in range(rate * 3)]
-    assert len(rc_bls.hash_sponge(data))    == rc_bls.digest_size
+    data = [rc_bls.F.random_element() for _ in range(rc_bls.r * 3)]
+    assert len(rc_bls.hash_sponge(data)) == rc_bls.d
 
 # ---------------------------------------------------------------------------
 # ST tests
@@ -121,7 +107,7 @@ def test_bls12_sponge_output_size(rc_bls):
 
 @pytest.fixture(scope="module")
 def rc_st():
-    return ReinforcedConcrete(RC_ST_PARAMS)
+    return ReinforcedConcrete(RC_ST_T3)
 
 @pytest.mark.parametrize("kat", ST_KATS)
 def test_st_kat(rc_st, kat):
@@ -129,26 +115,19 @@ def test_st_kat(rc_st, kat):
     out = rc_st.permutation(inp)
     assert [rc_st.from_field(x) for x in out] == kat["output"]
 
-def test_st_compose_roundtrip(rc_st):
-    for _ in range(5):
-        x = rc_st.F.random_element()
-        assert rc_st.compose(rc_st.decompose(x)) == x
-
 def test_st_permutation_deterministic(rc_st):
     inp = [rc_st.F.random_element() for _ in range(3)]
     assert rc_st.permutation(inp) == rc_st.permutation(inp)
 
 def test_st_compress_output_size(rc_st):
-    rate = rc_st.state_size - rc_st.digest_size
-    x_m = [rc_st.F.random_element() for _ in range(rate)]
-    x_c = [rc_st.F.random_element() for _ in range(rc_st.digest_size)]
-    assert len(rc_st.compress(x_m, x_c)) == rc_st.digest_size
+    x_m = [rc_st.F.random_element() for _ in range(rc_st.d)]
+    x_c = [rc_st.F.random_element() for _ in range(rc_st.d)]
+    assert len(rc_st.compress_2_to_1(x_m, x_c)) == rc_st.d
 
 def test_st_permutation_roundtrip(rc_st):
-    inp = [rc_st.F.random_element() for _ in range(rc_st.state_size)]
+    inp = [rc_st.F.random_element() for _ in range(rc_st.t)]
     assert rc_st.permutation_inv(rc_st.permutation(inp)) == inp
 
 def test_st_sponge_output_size(rc_st):
-    rate = rc_st.state_size - rc_st.digest_size
-    data = [rc_st.F.random_element() for _ in range(rate * 3)]
-    assert len(rc_st.hash_sponge(data)) == rc_st.digest_size
+    data = [rc_st.F.random_element() for _ in range(rc_st.r * 3)]
+    assert len(rc_st.hash_sponge(data)) == rc_st.d

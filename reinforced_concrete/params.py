@@ -1,118 +1,91 @@
-import hashlib
-
-from utils import circulant
-
+from utils import sample_round_constants_from_shake_128, invert_LUT
 
 class ReinforcedConcreteParams:
-    INIT_SHAKE = b"ReinforcedConcrete"
-
     def __init__(
         self,
-        p:           int,
-        alpha:       int,
-        pre_rounds:  int,
-        bars_rounds: int,
-        post_rounds: int,
-        si:          list[int],
-        lut:         list[int],
-        ab:          list[int],
-        state_size:  int = 3,                                # only suggested state size, DO NOT CHANGE
-        mds_matrix:  list[list[int]] = circulant([2, 1, 1]), # only suggested matrix, DO NOT CHANGE
-        digest_size: int = 1,                                # only suggested digest size, DO NOT CHANGE
-        alpha_inv:   int = None,                             # alpha^{-1} mod (p-1); computed as fallback if absent
+        p:         int,
+        t:         int,
+        R_pre:     int,
+        R_bars:    int,
+        R_post:    int,
+        alpha:     int,
+        si:        list[int],
+        LUT:       list[int],
+        COEFFS:    list[int],
+        M:         list[list[int]],
+        d:         int,
+        r:         int = None,
+        c:         int = None,
+        alpha_inv: int = None,
+        rcons:     list[list[int]] = None,
+        kappa:     int = 128,
     ):
         """
         Parameters
         ----------
-        p           : field characteristic (prime)
-        alpha       : power-map exponent for the first state element in Bricks
-        pre_rounds  : number of Bricks+Concrete rounds before the Bars layer(s)
-        bars_rounds : number of Bars+Concrete rounds in the middle (after pre_rounds, before post_rounds)
-        post_rounds : number of Bricks+Concrete rounds after the Bars layer(s)
-        si          : mixed-radix base sequence for Bars decompose/compose
-        lut         : lookup table applied to each digit in Bars
-        ab          : [a1, a2, b1, b2] — Bricks polynomial coefficients
-        alpha_inv   : alpha^{-1} mod (p-1); pass from Field.alpha_inv to avoid computing for large primes
+        p         : field characteristic (prime)
+        t         : permutation state size
+        R_pre     : number of Bricks+Concrete rounds before the Bars layer(s)
+        R_bars    : number of Bars+Concrete rounds in the middle (after R_pre, before R_post)
+        R_post    : number of Bricks+Concrete rounds after the Bars layer(s)
+        alpha     : power-map exponent for the first state element in Bricks
+        si        : bases for decompose/compose in the Bars layer
+        LUT       : per-digit lookup table used in Bar (same LUT can be applied to all chunks due to padding in _pad_LUT)
+        COEFFS    : Bricks polynomial coefficients
+        M         : MDS matrix (txt)
+        d         : digest size (number of output elements)
+        r         : rate (number of outer state elements absorbed/squeezed per sponge step)
+        c         : capacity (number of inner state elements)
+        alpha_inv : alpha^{-1} mod (p-1); pass from Field.alpha_inv to avoid computing for large primes
+        rcons     : Rxt round constants; generated via SHAKE128 if not provided
+        kappa     : target security level in bits (default 128)
         """
-        assert len(lut) <= 0xFFFF
-        assert len(ab) == 4
+        assert len(LUT) <= 0xFFFF
+        assert len(COEFFS) == 2 and all(len(row) == t - 1 for row in COEFFS)
+        assert len(M) == t and all(len(row) == t for row in M) if M is not None else True
 
-        self.state_size   = state_size
-        self.mds_matrix   = mds_matrix
-        self.digest_size  = digest_size
-        self.p            = p
-        self.alpha        = alpha
-        self.alpha_inv    = alpha_inv
-        self.pre_rounds   = pre_rounds
-        self.bars_rounds  = bars_rounds
-        self.post_rounds  = post_rounds
-        self.total_rounds = pre_rounds + bars_rounds + post_rounds
-        self.si           = list(si)
+        self.p = p
+        self.t = t
+        self.kappa = kappa
 
-        # ab = [a1, a2, b1, b2] — stored as plain ints
-        self.a_coeffs = [ab[0], ab[1]]
-        self.b_coeffs = [ab[2], ab[3]]
+        # Rounds
+        self.R_pre = R_pre
+        self.R_bars = R_bars
+        self.R_post = R_post
+        self.R = R_pre + R_bars + R_post
 
-        self.lut     = self._pad_lut(lut, si)
-        self.lut_inv = self._invert_lut(self.lut)
-        self.round_constants = self._instantiate_rc(self._init_shake())
+        # Non-linear layers: Bricks
+        self.alpha = alpha
+        self.alpha_inv = alpha_inv
+        self.a_coeffs = COEFFS[0]
+        self.b_coeffs = COEFFS[1]
 
-    # ------------------------------------------------------------------
+        # Non-linear layers: Bars
+        self.si = list(si)
+        self.LUT = self._pad_LUT(LUT, max(si)) if LUT is not None else self._pad_LUT(self._init_lut(), max(si))
 
-    def _init_shake(self) -> "_ByteReader":
-        num_bits = self.p.bit_length()
-        n_bytes  = (num_bits + 7) // 8
+        # Affine layer
+        self.M = M
+        self.rcons = rcons if rcons is not None else self._init_rcons()
 
-        shake = hashlib.shake_128()
-        shake.update(self.INIT_SHAKE)
-        shake.update(self.p.to_bytes(n_bytes, "little"))
+        # Hash modes
+        self.r = r
+        self.c = c
+        self.d = d
 
-        return _ByteReader(shake.digest(100_000), n_bytes, self.p, num_bits)
+    def _init_lut(self) -> list[int]:
+        # TODO Implement LUT generation via MiMC, as described in the paper.
+        raise NotImplementedError(f"LUT creation currently not implemented.")
 
-    def _instantiate_rc(self, reader: "_ByteReader") -> list[list[int]]:
-        return [
-            [reader.read() for _ in range(self.state_size)]
-            for _ in range(self.total_rounds + 1)
-        ]
+    def _init_rcons(self) -> list[list[int]]:
+        n_bytes = (self.p.bit_length() + 7) // 8
+        seed = b"ReinforcedConcrete" + self.p.to_bytes(n_bytes, "little")
+        return sample_round_constants_from_shake_128(seed, self.p, self.R + 1, self.t, sampling="bitmask")
 
     @staticmethod
-    def _pad_lut(lut: list[int], si: list[int]) -> list[int]:
-        out    = list(lut)
-        max_si = max(si)
-        for i in range(len(lut), max_si):
+    def _pad_LUT(LUT: list[int], max_si: int) -> list[int]:
+        out = list(LUT)
+        for i in range(len(LUT), max_si):
             out.append(i)
         return out
 
-    @staticmethod
-    def _invert_lut(lut: list[int]) -> list[int]:
-        inv = [0] * len(lut)
-        for i, v in enumerate(lut):
-            inv[v] = i
-        return inv
-
-
-class _ByteReader:
-    """Sequential reader over a pre-generated byte string.
-
-    Mirrors field_element_from_shake in the Rust reference, reads ceil(NUM_BITS/8)
-    bytes at a time, masks the top bits of the last byte to stay within [0, 2^NUM_BITS),
-    then rejects if the value >= p (same logic as ff::PrimeField::from_repr).
-    See https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo/-/blob/master/plain_impls/src/fields/utils.rs.
-    """
-
-    def __init__(self, data: bytes, n_bytes: int, p: int, num_bits: int):
-        self._data    = data
-        self._pos     = 0
-        self._n_bytes = n_bytes
-        self._p       = p
-        mod_          = num_bits % 8
-        self._mask    = ((1 << mod_) - 1) if mod_ != 0 else 0xFF
-
-    def read(self) -> int:
-        while True:
-            raw          = bytearray(self._data[self._pos : self._pos + self._n_bytes])
-            self._pos   += self._n_bytes
-            raw[-1]     &= self._mask          # zero out bits above NUM_BITS
-            val          = int.from_bytes(raw, "little")
-            if val < self._p:
-                return val

@@ -1,33 +1,44 @@
 from sage.all import GF, Integer, Matrix
 
 from reinforced_concrete.params import ReinforcedConcreteParams
-from utils import matvecmul
+from utils import matvecmul, mixed_radix_decompose, mixed_radix_compose, invert_LUT
 from modes import compress_davies_meyer, hash_sponge, pad_zero
-
 
 class ReinforcedConcrete:
     # ---------------------------------------------------------------------------
     # Initialization
     # ---------------------------------------------------------------------------
-    
-    def __init__(self, params: ReinforcedConcreteParams):
-        self.F               = GF(params.p)
-        self.alpha           = params.alpha
-        self.pre_rounds      = params.pre_rounds
-        self.bars_rounds     = params.bars_rounds
-        self.total_rounds    = params.total_rounds
-        self.matrix          = params.mds_matrix
-        self.state_size      = params.state_size
-        self.digest_size     = params.digest_size
-        self.si              = params.si
-        self.lut             = params.lut
-        self.lut_inv         = params.lut_inv
-        self.alpha_inv       = params.alpha_inv if params.alpha_inv is not None else pow(self.alpha, -1, int(self.F.characteristic()) - 1)
-        self.matrix_inv      = [list(row) for row in Matrix(self.F, self.matrix).inverse()]
-        self.round_constants = [[self.to_field(rc) for rc in row] for row in params.round_constants]
-        self.a_coeffs        = [self.to_field(a) for a in params.a_coeffs]
-        self.b_coeffs        = [self.to_field(b) for b in params.b_coeffs]
 
+    def __init__(self, params: ReinforcedConcreteParams):
+        self.F = GF(params.p)
+        self.t = params.t
+
+        # Rounds
+        self.R_pre = params.R_pre
+        self.R_bars = params.R_bars
+        self.R = params.R
+
+        # Non-linear layers: Bricks
+        self.alpha = params.alpha
+        self.alpha_inv = params.alpha_inv if params.alpha_inv is not None else pow(alpha, -1, p - 1)
+        self.a_coeffs = [self.to_field(a) for a in params.a_coeffs]
+        self.b_coeffs = [self.to_field(b) for b in params.b_coeffs]
+
+        # Non-linear layers: Bars
+        self.si = params.si
+        self.LUT = params.LUT
+        self.LUT_inv = invert_LUT(self.LUT)
+
+        # Affine layer
+        self.M = params.M
+        self.M_inv = [list(row) for row in Matrix(self.F, self.M).inverse()]
+        self.rcons = [[self.to_field(rc) for rc in row] for row in params.rcons]
+        
+        # Hash modes
+        self.r = params.r
+        self.c = params.c
+        self.d = params.d
+        
     # ---------------------------------------------------------------------------
     # Small helpers
     # ---------------------------------------------------------------------------
@@ -42,119 +53,118 @@ class ReinforcedConcrete:
     # Component functions
     # ---------------------------------------------------------------------------
 
-    def concrete(self, state: list, round_idx: int) -> list:
-        """MDS matrix-vector product followed by round-constant addition, in-place."""
-        result = matvecmul(self.matrix, state)
-        for i, rc in enumerate(self.round_constants[round_idx]):
+    def AffineLayer(self, state: list, round_idx: int) -> list:
+        """MDS matrix-vector product followed by round-constant addition. 
+        Matrix multiplication and round constant addition originally called Concrete in RC paper."""
+        result = matvecmul(self.M, state)
+        for i, rc in enumerate(self.rcons[round_idx]):
             result[i] = result[i] + rc
         return result
-    
-    def concrete_inv(self, state: list, round_idx: int) -> list:
-        sub = [state[i] - self.round_constants[round_idx][i] for i in range(len(state))]
-        return matvecmul(self.matrix_inv, sub)
+
+    def AffineLayer_inv(self, state: list, round_idx: int) -> list:
+        sub = [state[i] - self.rcons[round_idx][i] for i in range(len(state))]
+        return matvecmul(self.M_inv, sub)
 
     def Fi(self, val, i):
         return val ** 2 + self.a_coeffs[i] * val + self.b_coeffs[i]
 
-    def bricks(self, state: list) -> list:
-        new0 = state[0] ** self.alpha
-        new1 = state[1] * self.Fi(state[0], 0)
-        new2 = state[2] * self.Fi(state[1], 1)
-        return [new0, new1, new2]
-    
-    def bricks_inv(self, state: list) -> list:
-        x0 = state[0] ** self.alpha_inv
-        x1 = state[1] * self.Fi(x0, 0) ** (-1)
-        x2 = state[2] * self.Fi(x1, 1) ** (-1)
-        return [x0, x1, x2]
-
-    def decompose(self, val) -> list[int]:
-        """Decompose a field element into mixed-radix digits w.r.t. si."""
-        n = self.from_field(val)
-        res = [0] * len(self.si)
-        for i in range(len(self.si) - 1, 0, -1):
-            n, res[i] = divmod(n, self.si[i])
-        res[0] = n
-        return res
-
-    def compose(self, vals: list[int]):
-        """Recompose a field element from mixed-radix digits w.r.t. si."""
-        result = vals[0]
-        for val, s in zip(vals[1:], self.si[1:]):
-            result = result * s + val
-        return self.to_field(result)
-
-    def bars(self, state: list) -> list:
-        result = []
-        for el in state:
-            digits = self.decompose(el)
-            digits = [self.lut[d] for d in digits]
-            result.append(self.compose(digits))
+    def Bricks(self, state: list) -> list:
+        result = [state[0] ** self.alpha]
+        for i in range(1, self.t):
+            result.append(state[i] * self.Fi(state[i - 1], i - 1))
         return result
 
-    def bars_inv(self, state: list) -> list:
+    def Bricks_inv(self, state: list) -> list:
+        result = [state[0] ** self.alpha_inv]
+        for i in range(1, self.t):
+            result.append(state[i] * self.Fi(result[i - 1], i - 1) ** (-1))
+        return result
+
+    def Bars(self, state: list) -> list:
         result = []
         for el in state:
-            digits = self.decompose(el)
-            digits = [self.lut_inv[d] for d in digits]
-            result.append(self.compose(digits))
+            digits = mixed_radix_decompose(el, self.si, self.from_field)
+            digits = [self.LUT[d] for d in digits]
+            result.append(mixed_radix_compose(digits, self.si, self.to_field))
+        return result
+
+    def Bars_inv(self, state: list) -> list:
+        result = []
+        for el in state:
+            digits = mixed_radix_decompose(el, self.si, self.from_field)
+            digits = [self.LUT_inv[d] for d in digits]
+            result.append(mixed_radix_compose(digits, self.si, self.to_field))
         return result
 
     # ---------------------------------------------------------------------------
-    # Permutation and hash function
+    # Permutation
     # ---------------------------------------------------------------------------
 
     def permutation(self, state: list) -> list:
-        if len(state) != self.state_size:
-            raise ValueError(f"Invalid state size. Expected {self.state_size}, got {len(state)}")
+        if len(state) != self.t:
+            raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
-        # Initial concrete
-        state = self.concrete(state, 0)
+        state = self.AffineLayer(state, 0)
 
-        # pre-rounds (bricks)
-        for i in range(1, self.pre_rounds + 1):
-            state = self.bricks(state)
-            state = self.concrete(state, i)
+        for i in range(1, self.R_pre + 1):
+            state = self.Bricks(state)
+            state = self.AffineLayer(state, i)
 
-        # middle-rounds (bars)
-        for i in range(self.pre_rounds + 1, self.pre_rounds + self.bars_rounds + 1):
-            state = self.bars(state)
-            state = self.concrete(state, i)
+        for i in range(self.R_pre + 1, self.R_pre + self.R_bars + 1):
+            state = self.Bars(state)
+            state = self.AffineLayer(state, i)
 
-        # post-rounds (bricks)
-        for i in range(self.pre_rounds + self.bars_rounds + 1, self.total_rounds + 1):
-            state = self.bricks(state)
-            state = self.concrete(state, i)
+        for i in range(self.R_pre + self.R_bars + 1, self.R + 1):
+            state = self.Bricks(state)
+            state = self.AffineLayer(state, i)
 
         return state
 
     def permutation_inv(self, state: list) -> list:
-        if len(state) != self.state_size:
-            raise ValueError(f"Invalid state size. Expected {self.state_size}, got {len(state)}")
+        if len(state) != self.t:
+            raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
-        # Undo post-rounds (bricks)
-        for i in range(self.total_rounds, self.pre_rounds + self.bars_rounds, -1):
-            state = self.concrete_inv(state, i)
-            state = self.bricks_inv(state)
+        for i in range(self.R, self.R_pre + self.R_bars, -1):
+            state = self.AffineLayer_inv(state, i)
+            state = self.Bricks_inv(state)
 
-        # Undo middle-rounds (bars)
-        for i in range(self.pre_rounds + self.bars_rounds, self.pre_rounds, -1):
-            state = self.concrete_inv(state, i)
-            state = self.bars_inv(state)
+        for i in range(self.R_pre + self.R_bars, self.R_pre, -1):
+            state = self.AffineLayer_inv(state, i)
+            state = self.Bars_inv(state)
 
-        # Undo pre-rounds (bricks)
-        for i in range(self.pre_rounds, 0, -1):
-            state = self.concrete_inv(state, i)
-            state = self.bricks_inv(state)
+        for i in range(self.R_pre, 0, -1):
+            state = self.AffineLayer_inv(state, i)
+            state = self.Bricks_inv(state)
 
-        # Undo initial concrete
-        state = self.concrete_inv(state, 0)
+        state = self.AffineLayer_inv(state, 0)
         return state
 
-    def compress(self, x_m: list, x_c: list) -> list:
-        return compress_davies_meyer(perm=self.permutation, x_m=x_m, x_c=x_c, digest_size=self.digest_size, to_field=self.to_field)
+    # ---------------------------------------------------------------------------
+    # Hash modes
+    # ---------------------------------------------------------------------------
+
+    def compress_2_to_1(self, x1: list, x2:list) -> list:
+        """2-to-1 compression defined for large state sizes triple the digest size"""
+        if self.t != 3 * self.d:
+            raise ValueError(f"Compression mode not defined for state size {self.t} and digest size {self.d}.")
+        if len(x1) != self.d or len(x2) != self.d:
+            raise ValueError(f"Invalid input sizes. Expected ({self.d},{self.d}), got ({len(x1)},{len(x2)})")
+        return compress_davies_meyer(
+            perm=self.permutation, 
+            x_m=x1 + x2, 
+            x_c=[self.F.zero()] * self.d, 
+            digest_size=self.d, 
+            to_field=self.to_field
+        )
 
     def hash_sponge(self, data: list) -> list:
-        capacity = self.state_size - self.digest_size
-        rate = self.state_size - capacity
-        return hash_sponge(perm=self.permutation, data=data, state_size=self.state_size, rate=rate, capacity=capacity, digest_size=self.digest_size, pad=pad_zero, to_field=self.to_field)
+        return hash_sponge(
+            perm=self.permutation, 
+            data=data, 
+            state_size=self.t, 
+            rate=self.r, 
+            capacity=self.c, 
+            digest_size=self.d, 
+            pad=pad_zero, 
+            to_field=self.to_field
+        )
