@@ -11,7 +11,7 @@ Shared modules at the root level:
   - `hash_sponge` standard sponge (absorb rate-sized blocks with zero-padding, squeeze `digest_size` elements).
   - `hash_sponge_pi` variant *sponge-pi* of arithmetization-oriented sponges, see [Lefevre et al., ToSC 2025](https://tosc.iacr.org/index.php/ToSC/article/view/12073).
   - `hash_sponge_safe` Sponge API *SAFE* for Field Elements, see [Aumasson et al., ePrint](https://eprint.iacr.org/2023/522).
-  - `pad_zero` / `pad_pi` padding rules used by the sponge variants.
+  - `pad_zero` / `pad_pi` / `pad_one` padding rules used by the sponge variants.
 - **`utils.py`** shared helpers
 
 Each primitive lives in its own folder and follows a common layout:
@@ -84,6 +84,86 @@ Each primitive lives in its own folder and follows a common layout:
       <td>12</td>
       <td>6</td>
       <td>sponge</td>
+    </tr>
+    <tr>
+      <td rowspan="4"><a href="https://eprint.iacr.org/2019/426">Rescue</a></td>
+      <td><code>RESCUE_BLS12_T3</code></td>
+      <td>BLS12-381 scalar (255 bit)</td>
+      <td>3</td>
+      <td>16</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_BN254_T3</code></td>
+      <td>BN254 scalar (254 bit)</td>
+      <td>3</td>
+      <td>16</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_ST_T3</code></td>
+      <td>ST (250 bit)</td>
+      <td>3</td>
+      <td>22</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_GOLDILOCKS_T12</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>12</td>
+      <td>10</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td rowspan="5"><a href="https://eprint.iacr.org/2020/1143">Rescue Prime</a></td>
+      <td><code>RESCUE_PRIME_BLS12_T3</code></td>
+      <td>BLS12-381 scalar (255 bit)</td>
+      <td>3</td>
+      <td>14</td>
+      <td>sponge (pad-one)</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_PRIME_BN254_T3</code></td>
+      <td>BN254 scalar (254 bit)</td>
+      <td>3</td>
+      <td>14</td>
+      <td>sponge (pad-one)</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_PRIME_ST_T3</code></td>
+      <td>ST (250 bit)</td>
+      <td>3</td>
+      <td>18</td>
+      <td>sponge (pad-one)</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_PRIME_GOLDILOCKS_T8</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>8</td>
+      <td>8</td>
+      <td>sponge (pad-one)</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_PRIME_GOLDILOCKS_T12</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>12</td>
+      <td>8</td>
+      <td>sponge (pad-one)</td>
+    </tr>
+    <tr>
+      <td rowspan="2"><a href="https://eprint.iacr.org/2022/1577">Rescue Prime Optimized</a></td>
+      <td><code>RPO_GOLDILOCKS_T12</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>12</td>
+      <td>7</td>
+      <td>fixed-output sponge (2-to-1 compression)</td>
+    </tr>
+    <tr>
+      <td><code>RPO_GOLDILOCKS_T16</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>16</td>
+      <td>7</td>
+      <td>fixed-output sponge (2-to-1 compression)</td>
     </tr>
   </tbody>
 </table>

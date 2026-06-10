@@ -102,6 +102,18 @@ GOLDILOCKS = Field(
     alpha_inv=10540996611094048183,
 )
 
+# p = 2^61 + 20*2^32 + 1  (StarkWare's original STARK-friendly prime)
+STARKWARE = Field(
+    name="Starkware",
+    p=(1 << 61) + 20 * (1 << 32) + 1,
+    n=1,
+    bits=62,
+    factors={2: 34, 13: 1, 167: 1, 211: 1, 293: 1},
+    generator=3,
+    alpha=3,
+    alpha_inv=1537228730075359915,
+)
+
 # --- 250-255-bit fields -----------------------------------------------------
 
 # p = 509 * 2^241 + 1  (NTT-friendly Proth prime k*2^n + 1 with k < 2^n)
@@ -126,6 +138,18 @@ FELT252 = Field(
     generator=3,
     alpha=3,
     alpha_inv=2412335192444087475798215188730046737082071476887731133315394704090581346987,
+)
+
+# Ed25519 scalar field (group order of the Ed25519 curve)
+ED25519_SCALAR = Field(
+    name="Ed25519-scalar",
+    p=2**252 + 27742317777372353535851937790883648493,
+    n=1,
+    bits=253,
+    factors={2: 2, 3: 1, 11: 1, 198211423230930754013084525763697: 1, 276602624281642239937218680557139826668747: 1},
+    generator=2,
+    alpha=5,
+    alpha_inv=4342203346399357328383911937825796544514269815627944563601170562971272550593,
 )
 
 # BN254 (alt-bn128) scalar field
@@ -179,7 +203,7 @@ BLS12_381_SCALAR = Field(
 FIELDS: dict[str, Field] = {
     f.name: f for f in (
         KOALABEAR, MERSENNE31, BABYBEAR,
-        GOLDILOCKS,
-        ST, FELT252, BN254_SCALAR, PALLAS, VESTA, BLS12_381_SCALAR,
+        GOLDILOCKS, STARKWARE,
+        ST, FELT252, ED25519_SCALAR, BN254_SCALAR, PALLAS, VESTA, BLS12_381_SCALAR,
     )
 }

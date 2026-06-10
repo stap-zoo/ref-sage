@@ -1,4 +1,6 @@
-from utils import sample_round_constants_from_shake_128
+from sage.all import GF, Integer, Matrix
+
+from utils import sample_from_shake_128, invert_LUT
 
 class MonolithParams:
     def __init__(
@@ -35,25 +37,41 @@ class MonolithParams:
         assert len(M) == t and all(len(row) == t for row in M) if M is not None else True
 
         self.p = p
+        self.F = GF(p)
         self.t = t
         self.kappa = kappa
 
         # Rounds
-        self.R = R
+        self.R = R if R is not None else self._init_rounds()
 
         # Non-linear layers: Bars
         self.si = si
         self.LUTs = LUTs if LUTs is not None else {s: self._compute_lut(s) for s in set(si)}
+        self.LUTs_inv = {s: invert_LUT(self.LUTs[s]) for s in self.LUTs}
         self.u = u
 
         # Affine layer
-        self.M = M
+        M = M if M is not None else self._init_mds()
+        self.M = [[self.to_field(x) for x in row] for row in M]
+        self.M_inv = [list(row) for row in Matrix(self.F, self.M).inverse()]
+
         self.rcons = rcons if rcons is not None else self._init_rcons()
+        self.rcons = [[self.to_field(x) for x in row] for row in self.rcons]
 
         # Hash modes
         self.d = d
         self.r = r
         self.c = c
+
+    # ---------------------------------------------------------------------------
+    # Small helpers
+    # ---------------------------------------------------------------------------
+
+    def from_field(self, el) -> Integer:
+        return Integer(el)
+
+    def to_field(self, n: int):
+        return self.F(n)
     
     def _init_luts(self) -> dict[int, list[int]]:
         LUTs = {}
@@ -73,7 +91,15 @@ class MonolithParams:
                 + bytes([self.t, self.R])
                 + (struct.pack('<I', self.p) if bits <= 32 else struct.pack('<Q', self.p))
                 + (bytes([8, 8, 8, 7])       if bits <= 32 else bytes([8] * 8)))
-        return sample_round_constants_from_shake_128(seed, self.p, self.R - 1, self.t, sampling="naive")
+        return sample_from_shake_128(seed, self.p, self.R - 1, self.t, sampling="naive")
+    
+    def _init_rounds(self) -> int:
+        # TODO implement
+        raise NotImplementedError("Automatic round number derivation not implemented for Monolith.")
+
+    def _init_mds(self):
+        # TODO implement
+        raise NotImplementedError("MDS matrix generation not implemented for Monolith.")
 
 
 def compute_lut_8() -> list[int]:

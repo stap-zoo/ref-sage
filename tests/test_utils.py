@@ -1,7 +1,10 @@
 import pytest
 from sage.all import GF, Integer
 
-from utils import mixed_radix_decompose, mixed_radix_compose
+from utils import (
+    mixed_radix_decompose,
+    mixed_radix_compose,
+)
 from reinforced_concrete.instances import RC_BLS12_T3, RC_BN254_T3, RC_ST_T3
 from monolith.instances import (
     MONOLITH_M31_T16,

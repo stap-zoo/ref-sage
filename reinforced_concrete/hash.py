@@ -1,7 +1,5 @@
-from sage.all import GF, Integer, Matrix
-
 from reinforced_concrete.params import ReinforcedConcreteParams
-from utils import matvecmul, mixed_radix_decompose, mixed_radix_compose, invert_LUT
+from utils import matvecmul, vecadd, vecsub, mixed_radix_decompose, mixed_radix_compose, add_to_start
 from modes import compress_davies_meyer, hash_sponge, pad_zero
 
 class ReinforcedConcrete:
@@ -10,7 +8,9 @@ class ReinforcedConcrete:
     # ---------------------------------------------------------------------------
 
     def __init__(self, params: ReinforcedConcreteParams):
-        self.F = GF(params.p)
+        self.F = params.F
+        self.to_field = params.to_field
+        self.from_field = params.from_field
         self.t = params.t
 
         # Rounds
@@ -20,34 +20,24 @@ class ReinforcedConcrete:
 
         # Non-linear layers: Bricks
         self.alpha = params.alpha
-        self.alpha_inv = params.alpha_inv if params.alpha_inv is not None else pow(alpha, -1, p - 1)
-        self.a_coeffs = [self.to_field(a) for a in params.a_coeffs]
-        self.b_coeffs = [self.to_field(b) for b in params.b_coeffs]
+        self.alpha_inv = params.alpha_inv
+        self.a_coeffs = params.a_coeffs
+        self.b_coeffs = params.b_coeffs
 
         # Non-linear layers: Bars
         self.si = params.si
         self.LUT = params.LUT
-        self.LUT_inv = invert_LUT(self.LUT)
+        self.LUT_inv = params.LUT_inv
 
         # Affine layer
         self.M = params.M
-        self.M_inv = [list(row) for row in Matrix(self.F, self.M).inverse()]
-        self.rcons = [[self.to_field(rc) for rc in row] for row in params.rcons]
-        
+        self.M_inv = params.M_inv
+        self.rcons = params.rcons
+
         # Hash modes
         self.r = params.r
         self.c = params.c
         self.d = params.d
-        
-    # ---------------------------------------------------------------------------
-    # Small helpers
-    # ---------------------------------------------------------------------------
-
-    def from_field(self, el) -> Integer:
-        return Integer(el)
-
-    def to_field(self, n: int):
-        return self.F(n)
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -56,14 +46,13 @@ class ReinforcedConcrete:
     def AffineLayer(self, state: list, round_idx: int) -> list:
         """MDS matrix-vector product followed by round-constant addition. 
         Matrix multiplication and round constant addition originally called Concrete in RC paper."""
-        result = matvecmul(self.M, state)
-        for i, rc in enumerate(self.rcons[round_idx]):
-            result[i] = result[i] + rc
-        return result
+        state = matvecmul(self.M, state)
+        state = vecadd(state, self.rcons[round_idx])
+        return state
 
     def AffineLayer_inv(self, state: list, round_idx: int) -> list:
-        sub = [state[i] - self.rcons[round_idx][i] for i in range(len(state))]
-        return matvecmul(self.M_inv, sub)
+        state = vecsub(state, self.rcons[round_idx])
+        return matvecmul(self.M_inv, state)
 
     def Fi(self, val, i):
         return val ** 2 + self.a_coeffs[i] * val + self.b_coeffs[i]
@@ -158,13 +147,16 @@ class ReinforcedConcrete:
         )
 
     def hash_sponge(self, data: list) -> list:
+        padded_data, _ = pad_zero(data, self.r, self.to_field)
+        IV = [self.F.zero()] * self.c
         return hash_sponge(
             perm=self.permutation, 
-            data=data, 
+            data=padded_data, 
             state_size=self.t, 
             rate=self.r, 
             capacity=self.c, 
             digest_size=self.d, 
-            pad=pad_zero, 
+            IV=IV,
+            absorb=add_to_start,
             to_field=self.to_field
         )

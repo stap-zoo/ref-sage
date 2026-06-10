@@ -1,12 +1,10 @@
-from sage.all import GF, Integer, Matrix
-
 from monolith.params import MonolithParams
-from utils import matvecmul, mixed_radix_decompose, mixed_radix_compose, invert_LUT
+from utils import matvecmul, vecadd, vecsub, mixed_radix_decompose, mixed_radix_compose, add_to_start
 from modes import compress_davies_meyer, hash_sponge_safe, pad_zero
 
 class Monolith:
     def __init__(self, params: MonolithParams):
-        self.F = GF(params.p)
+        self.F = params.F
         self.t = params.t
 
         # Rounds
@@ -15,31 +13,23 @@ class Monolith:
         # Non-linear layers: Bars
         self.si = params.si
         self.LUTs = params.LUTs
-        self.LUTs_inv = {s: invert_LUT(self.LUTs[s]) for s in self.LUTs}
+        self.LUTs_inv = params.LUTs_inv
         self.u = params.u
 
         # Affine layer
-        # According to reference implementation, no round constant addition in 
+        # According to reference implementation, no round constant addition in last round
         self.M = params.M
-        self.M_inv = [list(row) for row in Matrix(self.F, self.M).inverse()]
-        self.rcons = [[self.F.zero()] * self.t] + \
-            [[self.to_field(rc) for rc in row] for row in params.rcons] +\
-            [[self.F.zero()] * self.t]    
+        self.M_inv = params.M_inv
+        self.rcons = list(params.rcons) + [[self.F.zero()] * self.t]
 
         # Hash modes
         self.r = params.r
         self.c = params.c
         self.d = params.d
 
-    # ---------------------------------------------------------------------------
-    # Small helpers
-    # ---------------------------------------------------------------------------
-
-    def from_field(self, el) -> Integer:
-        return Integer(el)
-
-    def to_field(self, n: int):
-        return self.F(n)
+        # Field conversion helpers
+        self.to_field = params.to_field
+        self.from_field = params.from_field
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -48,14 +38,12 @@ class Monolith:
     def AffineLayer(self, state: list, round_idx: int) -> list:
         """MDS matrix-vector product followed by round-constant addition. 
         Matrix multiplication originally called Concrete in Monolith paper."""
-        result = matvecmul(self.M, state)
-        for i, rc in enumerate(self.rcons[round_idx]):
-            result[i] = result[i] + rc
-        return result
+        state = matvecmul(self.M, state)
+        return vecadd(state, self.rcons[round_idx])
     
     def AffineLayer_inv(self, state: list, round_idx: int) -> list:
-        sub = [state[i] - self.rcons[round_idx][i] for i in range(len(state))]
-        return matvecmul(self.M_inv, sub)
+        state = vecsub(state, self.rcons[round_idx])
+        return matvecmul(self.M_inv, state)
 
     def Bars(self, state: list) -> list:
         result = list(state)
@@ -92,10 +80,11 @@ class Monolith:
     def permutation(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
+        
+        # Initial application of matrix multiplcation
+        state = matvecmul(self.M, state)
 
-        state = self.AffineLayer(state, 0)
-
-        for i in range(1, self.R + 1):
+        for i in range(self.R):
             state = self.Bars(state)
             state = self.Bricks(state)
             state = self.AffineLayer(state, i)
@@ -106,12 +95,12 @@ class Monolith:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
-        for i in range(self.R, 0, -1):
+        for i in reversed(range(self.R)):
             state = self.AffineLayer_inv(state, i)
             state = self.Bricks_inv(state)
             state = self.Bars_inv(state)
             
-        state = self.AffineLayer_inv(state, 0)
+        state = matvecmul(self.M_inv, state)
         return state
 
     # ---------------------------------------------------------------------------
@@ -133,13 +122,16 @@ class Monolith:
         )
         
     def hash_sponge(self, data: list) -> list:
+        padded_data, _ = pad_zero(data, self.r, self.to_field)
+        IV = [self.F.zero()] * self.c
         return hash_sponge_safe(
             perm=self.permutation,
-            data=data,
+            data=padded_data,
             state_size=self.t,
             rate=self.r,
             capacity=self.c,
             digest_size=self.d,
-            pad=pad_zero,
+            IV=IV,
+            absorb=add_to_start,
             to_field=self.to_field,
         )
