@@ -35,26 +35,48 @@ Each primitive lives in its own folder and follows a common layout:
   </thead>
   <tbody>
     <tr>
-      <td rowspan="3"><a href="https://eprint.iacr.org/2021/1038">Reinforced Concrete</a></td>
-      <td><code>RC_BLS12_T3</code></td>
+      <td><a href="https://eprint.iacr.org/2023/588">Arion</a></td>
+      <td><code>ARION_BLS12_T3</code></td>
       <td>BLS12-381 scalar (255 bit)</td>
       <td>3</td>
-      <td>3+1+3</td>
-      <td>2-to-1 compression, sponge</td>
+      <td>6</td>
+      <td>sponge</td>
     </tr>
     <tr>
-      <td><code>RC_BN254_T3</code></td>
-      <td>BN254 scalar (254 bit)</td>
-      <td>3</td>
-      <td>3+1+3</td>
-      <td>2-to-1 compression, sponge</td>
+      <td rowspan="5"><a href="https://eprint.iacr.org/2022/403">Griffin</a></td>
+      <td><code>GRIFFIN_GOLDILOCKS_T8</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>8</td>
+      <td>8</td>
+      <td>sponge</td>
     </tr>
     <tr>
-      <td><code>RC_ST_T3</code></td>
+      <td><code>GRIFFIN_GOLDILOCKS_T12</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>12</td>
+      <td>8</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>GRIFFIN_ST_T3</code></td>
       <td>ST (250 bit)</td>
       <td>3</td>
-      <td>3+1+3</td>
-      <td>2-to-1 compression, sponge</td>
+      <td>16</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>GRIFFIN_BN254_T3</code></td>
+      <td>BN254 scalar (254 bit)</td>
+      <td>3</td>
+      <td>12</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>GRIFFIN_BLS12_T3</code></td>
+      <td>BLS12-381 scalar (255 bit)</td>
+      <td>3</td>
+      <td>12</td>
+      <td>sponge</td>
     </tr>
     <tr>
       <td rowspan="4"><a href="https://eprint.iacr.org/2023/1025">Monolith</a></td>
@@ -86,25 +108,33 @@ Each primitive lives in its own folder and follows a common layout:
       <td>sponge</td>
     </tr>
     <tr>
-      <td rowspan="4"><a href="https://eprint.iacr.org/2019/426">Rescue</a></td>
-      <td><code>RESCUE_BLS12_T3</code></td>
-      <td>BLS12-381 scalar (255 bit)</td>
-      <td>3</td>
-      <td>16</td>
-      <td>sponge</td>
-    </tr>
-    <tr>
-      <td><code>RESCUE_BN254_T3</code></td>
-      <td>BN254 scalar (254 bit)</td>
-      <td>3</td>
-      <td>16</td>
-      <td>sponge</td>
-    </tr>
-    <tr>
-      <td><code>RESCUE_ST_T3</code></td>
+      <td rowspan="3"><a href="https://eprint.iacr.org/2021/1038">Reinforced Concrete</a></td>
+      <td><code>RC_ST_T3</code></td>
       <td>ST (250 bit)</td>
       <td>3</td>
-      <td>22</td>
+      <td>3+1+3</td>
+      <td>2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>RC_BN254_T3</code></td>
+      <td>BN254 scalar (254 bit)</td>
+      <td>3</td>
+      <td>3+1+3</td>
+      <td>2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>RC_BLS12_T3</code></td>
+      <td>BLS12-381 scalar (255 bit)</td>
+      <td>3</td>
+      <td>3+1+3</td>
+      <td>2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td rowspan="7"><a href="https://eprint.iacr.org/2019/426">Rescue</a></td>
+      <td><code>RESCUE_STARKWARE_T12</code></td>
+      <td>StarkWare (62 bit)</td>
+      <td>12</td>
+      <td>10</td>
       <td>sponge</td>
     </tr>
     <tr>
@@ -115,28 +145,42 @@ Each primitive lives in its own folder and follows a common layout:
       <td>sponge</td>
     </tr>
     <tr>
-      <td rowspan="5"><a href="https://eprint.iacr.org/2020/1143">Rescue Prime</a></td>
-      <td><code>RESCUE_PRIME_BLS12_T3</code></td>
-      <td>BLS12-381 scalar (255 bit)</td>
-      <td>3</td>
-      <td>14</td>
-      <td>sponge (pad-one)</td>
-    </tr>
-    <tr>
-      <td><code>RESCUE_PRIME_BN254_T3</code></td>
-      <td>BN254 scalar (254 bit)</td>
-      <td>3</td>
-      <td>14</td>
-      <td>sponge (pad-one)</td>
-    </tr>
-    <tr>
-      <td><code>RESCUE_PRIME_ST_T3</code></td>
+      <td><code>RESCUE_ST_T3</code></td>
       <td>ST (250 bit)</td>
       <td>3</td>
-      <td>18</td>
-      <td>sponge (pad-one)</td>
+      <td>22</td>
+      <td>sponge</td>
     </tr>
     <tr>
+      <td><code>RESCUE_ED25519_T6</code></td>
+      <td>Ed25519 scalar (253 bit)</td>
+      <td>6</td>
+      <td>10</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_BN254_T3</code></td>
+      <td>BN254 scalar (254 bit)</td>
+      <td>3</td>
+      <td>16</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_BLS12_T3</code></td>
+      <td>BLS12-381 scalar (255 bit)</td>
+      <td>3</td>
+      <td>16</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_ED448_T10</code></td>
+      <td>Ed448 scalar (446 bit)</td>
+      <td>10</td>
+      <td>10</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td rowspan="5"><a href="https://eprint.iacr.org/2020/1143">Rescue Prime</a></td>
       <td><code>RESCUE_PRIME_GOLDILOCKS_T8</code></td>
       <td>Goldilocks (64 bit)</td>
       <td>8</td>
@@ -148,6 +192,27 @@ Each primitive lives in its own folder and follows a common layout:
       <td>Goldilocks (64 bit)</td>
       <td>12</td>
       <td>8</td>
+      <td>sponge (pad-one)</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_PRIME_ST_T3</code></td>
+      <td>ST (250 bit)</td>
+      <td>3</td>
+      <td>18</td>
+      <td>sponge (pad-one)</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_PRIME_BN254_T3</code></td>
+      <td>BN254 scalar (254 bit)</td>
+      <td>3</td>
+      <td>14</td>
+      <td>sponge (pad-one)</td>
+    </tr>
+    <tr>
+      <td><code>RESCUE_PRIME_BLS12_T3</code></td>
+      <td>BLS12-381 scalar (255 bit)</td>
+      <td>3</td>
+      <td>14</td>
       <td>sponge (pad-one)</td>
     </tr>
     <tr>

@@ -1,4 +1,4 @@
-from fields import BLS12_381_SCALAR, BN254_SCALAR, ST, GOLDILOCKS, STARKWARE, ED25519_SCALAR
+from fields import BLS12_381_SCALAR, BN254_SCALAR, ST, GOLDILOCKS, STARKWARE, ED25519_SCALAR, ED448_SCALAR
 from rescue.params import RescueParams
 
 # ---------------------------------------------------------------------------
@@ -82,4 +82,25 @@ RESCUE_ED25519_T6 = RescueParams(
     c=1,
     g=ED25519_SCALAR.generator,
     d=5,
+)
+
+# ---------------------------------------------------------------------------
+# Ed448 t=10 instance (kappa=224, c=2, R=10)
+# ---------------------------------------------------------------------------
+
+# g=2: full factorization of p-1 is infeasible (a 353-bit cofactor remains
+# unfactored), so a certified primitive root of GF(p)* isn't available.
+# 2 has order >= 38 (since 2^2 != 1 and 2^19 != 1, and the only divisors of
+# p-1 below 20 are 1, 2, 19), which is >= 2*t = 20 and thus sufficient for
+# the Vandermonde MDS construction in RescueParams._init_mds.
+RESCUE_ED448_T10 = RescueParams(
+    p=ED448_SCALAR.p,
+    t=10,
+    alpha=ED448_SCALAR.alpha,
+    alpha_inv=ED448_SCALAR.alpha_inv,
+    kappa=224,
+    c=2,
+    R=10,
+    g=2,
+    d=8,
 )

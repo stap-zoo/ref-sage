@@ -38,7 +38,7 @@ class ReinforcedConcreteParams:
         d         : digest size (number of output elements)
         r         : rate (number of outer state elements absorbed/squeezed per sponge step)
         c         : capacity (number of inner state elements)
-        alpha_inv : alpha^{-1} mod (p-1)
+        alpha_inv : alpha^{-1} mod (p-1); computed if not provided
         rcons     : Rxt round constants; generated via SHAKE128 if not provided
         kappa     : target security level in bits (default 128)
         """

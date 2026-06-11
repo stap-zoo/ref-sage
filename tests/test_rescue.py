@@ -11,65 +11,98 @@ from rescue_prime.instances import RESCUE_PRIME_BLS12_T3, RESCUE_PRIME_GOLDILOCK
 from utils import vandermonde_mds_matrix, sample_from_shake_256
 from fields import BLS12_381_SCALAR, GOLDILOCKS
 
+INSTANCES = [
+    ("BLS12_T3", RESCUE_BLS12_T3),
+    ("BN254_T3", RESCUE_BN254_T3),
+    ("ST_T3", RESCUE_ST_T3),
+    ("GOLDILOCKS_T12", RESCUE_GOLDILOCKS_T12),
+]
+
 # ---------------------------------------------------------------------------
 # Known-answer test vectors (from the Sage reference implementation)
 # https://github.com/KULeuven-COSIC/Marvellous/blob/master/instance_generator.sage
 # ---------------------------------------------------------------------------
 
-T3_KATS = {
-    "BLS12": {
-        "input": [0, 1, 2],
-        "output": [
-            0x3a6da171e7d612f45c04bff4fb100efd6d85fbbdc78b49872947ca7c5be9e87a,
-            0x65843d0bfa54f9891aedd014bed810acb9a7c9613c724855b312a568d9fa3b7a,
-            0x6a724ef437d9280246325184cfa3844a90553cf5b01484a170a5d92a996e4f06,
-        ],
-    },
-    "BN254": {
-        "input": [0, 1, 2],
-        "output": [
-            0x2262a88c8b641065446e84e3fa132210312c076e9b056c972986dbc775c42e89,
-            0x19185415565c3847d80a72e8341b1ddbeb10d8f119a2132e127370e34b6b312e,
-            0x16c41359b114c56cf7b00c6a22de88a9bac5e1d5957cf02790a75a66d4566060,
-        ],
-    },
-    "ST": {
-        "input": [0, 1, 2],
-        "output": [
-            0x02778ceedfc5dca26a811aed72ce59f5a6721fc65f5f61d2dd8fbd333b8a6ebb,
-            0x039c581707ec0a5ed908301088b8ebbd1ea815c8db2368d64101b7306272c45f,
-            0x018bba1c61eedababe3d7c81ba1ee000b514c4400dd9a23bd3440765da3bfb09,
-        ],
-    },
+PERMUTATION_KATS = {
+    "BLS12_T3": [
+        {
+            "input": [0, 1, 2],
+            "output": [
+                0x3a6da171e7d612f45c04bff4fb100efd6d85fbbdc78b49872947ca7c5be9e87a,
+                0x65843d0bfa54f9891aedd014bed810acb9a7c9613c724855b312a568d9fa3b7a,
+                0x6a724ef437d9280246325184cfa3844a90553cf5b01484a170a5d92a996e4f06,
+            ],
+        },
+    ],
+    "BN254_T3": [
+        {
+            "input": [0, 1, 2],
+            "output": [
+                0x2262a88c8b641065446e84e3fa132210312c076e9b056c972986dbc775c42e89,
+                0x19185415565c3847d80a72e8341b1ddbeb10d8f119a2132e127370e34b6b312e,
+                0x16c41359b114c56cf7b00c6a22de88a9bac5e1d5957cf02790a75a66d4566060,
+            ],
+        },
+    ],
+    "ST_T3": [
+        {
+            "input": [0, 1, 2],
+            "output": [
+                0x02778ceedfc5dca26a811aed72ce59f5a6721fc65f5f61d2dd8fbd333b8a6ebb,
+                0x039c581707ec0a5ed908301088b8ebbd1ea815c8db2368d64101b7306272c45f,
+                0x018bba1c61eedababe3d7c81ba1ee000b514c4400dd9a23bd3440765da3bfb09,
+            ],
+        },
+    ],
+    "GOLDILOCKS_T12": [
+        {
+            "input": list(range(12)),
+            "output": [
+                0xee199b1c0c2ec165, 0x0d3003cfd2966617, 0x6bea04edea2f6628, 0x58cc421aac1c5ad5,
+                0x614a0cd7ae5aba77, 0xbf5843fd7b332792, 0x4bb813cbbc4b829f, 0x204ffe8417eeb6e8,
+                0x0730a4af90216d62, 0x69e9b9704fb47cc9, 0x5b046dcd07061b36, 0x8c30ff6723b16945,
+            ],
+        },
+    ],
 }
 
-GOLDILOCKS_T12_KAT = {
-    "permutation": {
-        "input": list(range(12)),
-        "output": [
-            0xee199b1c0c2ec165, 0x0d3003cfd2966617, 0x6bea04edea2f6628, 0x58cc421aac1c5ad5,
-            0x614a0cd7ae5aba77, 0xbf5843fd7b332792, 0x4bb813cbbc4b829f, 0x204ffe8417eeb6e8,
-            0x0730a4af90216d62, 0x69e9b9704fb47cc9, 0x5b046dcd07061b36, 0x8c30ff6723b16945,
-        ],
-    },
-    "sponge": {
-        "input": list(range(11)),
-        "output": [
-            0x3232bbf92f36b4ca, 0x4dc27ad23dfee93b, 0xd7f07aeea8a9c222, 0xf8654c877d2cf694,
-            0x424fba831e07ca3a, 0xd8d8e2e0687dd981, 0x3b6d6919cd9a7e8a, 0xac1a59ad3b320ba7,
-            0xa10e69ab735edbd3, 0x4e9d93a7ba766427, 0xbde43d3fbc71eba4,
-        ],
-    },
+SPONGE_KATS = {
+    "GOLDILOCKS_T12": [
+        {
+            "input": list(range(11)),
+            "output": [
+                0x3232bbf92f36b4ca, 0x4dc27ad23dfee93b, 0xd7f07aeea8a9c222, 0xf8654c877d2cf694,
+                0x424fba831e07ca3a, 0xd8d8e2e0687dd981, 0x3b6d6919cd9a7e8a, 0xac1a59ad3b320ba7,
+                0xa10e69ab735edbd3, 0x4e9d93a7ba766427, 0xbde43d3fbc71eba4,
+            ],
+        },
+    ],
 }
 
-INSTANCES = [
-    ("BLS12", RESCUE_BLS12_T3),
-    ("BN254", RESCUE_BN254_T3),
-    ("ST", RESCUE_ST_T3),
+PERMUTATION_KAT_CASES = [
+    (name, params, kat)
+    for name, params in INSTANCES
+    for kat in PERMUTATION_KATS[name]
+]
+PERMUTATION_KAT_IDS = [
+    name if len(PERMUTATION_KATS[name]) == 1 else f"{name}-{i}"
+    for name, params in INSTANCES
+    for i, _ in enumerate(PERMUTATION_KATS[name])
+]
+
+SPONGE_KAT_CASES = [
+    (name, params, kat)
+    for name, params in INSTANCES
+    for kat in SPONGE_KATS.get(name, [])
+]
+SPONGE_KAT_IDS = [
+    name if len(SPONGE_KATS[name]) == 1 else f"{name}-{i}"
+    for name, params in INSTANCES
+    for i, _ in enumerate(SPONGE_KATS.get(name, []))
 ]
 
 # ---------------------------------------------------------------------------
-# t=3 tests
+# Round constants
 # ---------------------------------------------------------------------------
 
 # RESCUE_ST_PARAMS.round_constants[0], from rescue/rust/rescue/rescue_instance_st.rs (RC3[0])
@@ -84,85 +117,59 @@ def test_st_round_constants_kat():
     assert [RESCUE_ST_T3.from_field(x) for x in RESCUE_ST_T3.rcons[0]] == RESCUE_RC3_ST_FIRST
 
 
-@pytest.mark.parametrize("name,params", INSTANCES)
-def test_t3_permutation_kat(name, params):
+# ---------------------------------------------------------------------------
+# KATs
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name,params,kat", PERMUTATION_KAT_CASES, ids=PERMUTATION_KAT_IDS)
+def test_permutation_kat(name, params, kat):
     r = Rescue(params)
-    kat = T3_KATS[name]
     inp = [r.to_field(x) for x in kat["input"]]
     out = r.permutation(inp)
     assert [r.from_field(x) for x in out] == kat["output"]
 
 
-@pytest.mark.parametrize("name,params", INSTANCES)
-def test_t3_permutation_deterministic(name, params):
+@pytest.mark.parametrize("name,params,kat", SPONGE_KAT_CASES, ids=SPONGE_KAT_IDS)
+def test_sponge_kat(name, params, kat):
     r = Rescue(params)
-    inp = [r.F.random_element() for _ in range(r.t)]
-    assert r.permutation(inp) == r.permutation(inp)
-
-
-@pytest.mark.parametrize("name,params", INSTANCES)
-def test_t3_permutation_distinct_inputs(name, params):
-    r = Rescue(params)
-    inp1 = [r.F.random_element() for _ in range(r.t)]
-    inp2 = [r.F.random_element() for _ in range(r.t)]
-    assert r.permutation(inp1) != r.permutation(inp2)
-
-
-@pytest.mark.parametrize("name,params", INSTANCES)
-def test_t3_sponge_output_size(name, params):
-    r = Rescue(params)
-    data = [r.F.random_element() for _ in range(r.r * 3)]
-    assert len(r.hash_sponge(data)) == r.r
-
-
-@pytest.mark.parametrize("name,params", INSTANCES)
-def test_t3_permutation_roundtrip(name, params):
-    r = Rescue(params)
-    inp = [r.F.random_element() for _ in range(r.t)]
-    assert r.permutation_inv(r.permutation(inp)) == inp
-
-
-# ---------------------------------------------------------------------------
-# Goldilocks T=12 tests
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(scope="module")
-def r_goldilocks_t12():
-    return Rescue(RESCUE_GOLDILOCKS_T12)
-
-
-def test_goldilocks_t12_permutation_kat(r_goldilocks_t12):
-    r = r_goldilocks_t12
-    kat = GOLDILOCKS_T12_KAT["permutation"]
-    inp = [r.to_field(x) for x in kat["input"]]
-    out = r.permutation(inp)
-    assert [r.from_field(x) for x in out] == kat["output"]
-
-
-def test_goldilocks_t12_sponge_kat(r_goldilocks_t12):
-    r = r_goldilocks_t12
-    kat = GOLDILOCKS_T12_KAT["sponge"]
     inp = [r.to_field(x) for x in kat["input"]]
     out = r.hash_sponge(inp, variable_length=False)
     assert [r.from_field(x) for x in out] == kat["output"]
 
 
-def test_goldilocks_t12_permutation_deterministic(r_goldilocks_t12):
-    r = r_goldilocks_t12
+# ---------------------------------------------------------------------------
+# Consistency tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_permutation_deterministic(name, params):
+    r = Rescue(params)
     inp = [r.F.random_element() for _ in range(r.t)]
     assert r.permutation(inp) == r.permutation(inp)
 
 
-def test_goldilocks_t12_sponge_output_size(r_goldilocks_t12):
-    r = r_goldilocks_t12
-    data = [r.F.random_element() for _ in range(r.r * 3)]
-    assert len(r.hash_sponge(data)) == r.r
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_permutation_distinct_inputs(name, params):
+    r = Rescue(params)
+    inp1 = [r.F.random_element() for _ in range(r.t)]
+    inp2 = [r.F.random_element() for _ in range(r.t)]
+    while inp1 == inp2:
+        inp2 = [r.F.random_element() for _ in range(r.t)]
+    assert r.permutation(inp1) != r.permutation(inp2)
 
 
-def test_goldilocks_t12_permutation_roundtrip(r_goldilocks_t12):
-    r = r_goldilocks_t12
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_permutation_roundtrip(name, params):
+    r = Rescue(params)
     inp = [r.F.random_element() for _ in range(r.t)]
     assert r.permutation_inv(r.permutation(inp)) == inp
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_sponge_output_size(name, params):
+    r = Rescue(params)
+    data = [r.F.random_element() for _ in range(r.r * 3)]
+    assert len(r.hash_sponge(data)) == r.r
 
 
 # ---------------------------------------------------------------------------

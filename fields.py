@@ -50,7 +50,7 @@ def find_smallest_generator(p: int, n: int = 1) -> int:
 # ---------------------------------------------------------------------------
 
 
-# --- 31-bit fields ----------------------------------------------------------
+# --- ~32-bit fields ----------------------------------------------------------
 
 # p = 2^31 - 2^24 + 1
 KOALABEAR = Field(
@@ -88,7 +88,7 @@ BABYBEAR = Field(
     alpha_inv=1725656503,
 )
 
-# --- 64-bit fields ----------------------------------------------------------
+# --- ~64-bit fields ----------------------------------------------------------
 
 # p = 2^64 - 2^32 + 1
 GOLDILOCKS = Field(
@@ -114,7 +114,7 @@ STARKWARE = Field(
     alpha_inv=1537228730075359915,
 )
 
-# --- 250-255-bit fields -----------------------------------------------------
+# --- ~256-bit fields -----------------------------------------------------
 
 # p = 509 * 2^241 + 1  (NTT-friendly Proth prime k*2^n + 1 with k < 2^n)
 ST = Field(
@@ -143,7 +143,7 @@ FELT252 = Field(
 # Ed25519 scalar field (group order of the Ed25519 curve)
 ED25519_SCALAR = Field(
     name="Ed25519-scalar",
-    p=2**252 + 27742317777372353535851937790883648493,
+    p=(1 << 252) + 27742317777372353535851937790883648493,
     n=1,
     bits=253,
     factors={2: 2, 3: 1, 11: 1, 198211423230930754013084525763697: 1, 276602624281642239937218680557139826668747: 1},
@@ -200,10 +200,24 @@ BLS12_381_SCALAR = Field(
     alpha_inv=20974350070050476191779096203274386335076221000211055129041463479975432473805,
 )
 
+# --- larger fields ---------------------------------------------------------
+
+# Ed448 scalar field (group order of the Ed448 curve)
+ED448_SCALAR = Field(
+    name="Ed448-scalar",
+    p=(1 << 446) - 13818066809895115352007386748515426880336692474882178609894547503885,
+    n=1,
+    bits=446,
+    factors=None,  # TODO: factorization of p-1 not yet computed
+    generator=None,  # TODO: primitive element of GF(p) not yet computed
+    alpha=5,
+    alpha_inv=109025808644341033582398571183200680153046204103097709042223529877087602376923751429717453175015425577986176225454997382864253515789867,
+)
+
 FIELDS: dict[str, Field] = {
     f.name: f for f in (
         KOALABEAR, MERSENNE31, BABYBEAR,
         GOLDILOCKS, STARKWARE,
-        ST, FELT252, ED25519_SCALAR, BN254_SCALAR, PALLAS, VESTA, BLS12_381_SCALAR,
+        ST, FELT252, ED25519_SCALAR, BN254_SCALAR, PALLAS, VESTA, BLS12_381_SCALAR, ED448_SCALAR,
     )
 }

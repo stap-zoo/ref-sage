@@ -6,6 +6,11 @@ from rescue_prime_optimized.instances import (
     RPO_GOLDILOCKS_T16,
 )
 
+INSTANCES = [
+    ("GOLDILOCKS_T12", RPO_GOLDILOCKS_T12),
+    ("GOLDILOCKS_T16", RPO_GOLDILOCKS_T16),
+]
+
 # ---------------------------------------------------------------------------
 # Known-answer test vectors (from the Sage reference implementation)
 # https://github.com/ASDiscreteMathematics/rpo/blob/master/reference_implementation/rescue_prime_optimized.sage
@@ -55,31 +60,36 @@ RPO_T16_KATS = [
 #     assert [rpo.from_field(x) for x in out] == expected
 
 
-def test_rpo_t12_digest_size():
-    rpo = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
+# ---------------------------------------------------------------------------
+# Consistency tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_digest_size(name, params):
+    rpo = RescuePrimeOptimized(params)
     out = rpo.hash_sponge([rpo.to_field(0)])
     assert len(out) == rpo.r // 2 == rpo.d
 
 
-def test_rpo_t16_digest_size():
-    rpo = RescuePrimeOptimized(RPO_GOLDILOCKS_T16)
-    out = rpo.hash_sponge([rpo.to_field(0)])
-    assert len(out) == rpo.r // 2 == rpo.d
-
-
-def test_rpo_t12_permutation_deterministic():
-    rpo = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_permutation_deterministic(name, params):
+    rpo = RescuePrimeOptimized(params)
     inp = [rpo.F.random_element() for _ in range(rpo.t)]
     assert rpo.permutation(inp) == rpo.permutation(inp)
 
 
-def test_rpo_t12_permutation_roundtrip():
-    rpo = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
-    inp = [rpo.F.random_element() for _ in range(rpo.t)]
-    assert rpo.permutation_inv(rpo.permutation(inp)) == inp
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_permutation_distinct_inputs(name, params):
+    rpo = RescuePrimeOptimized(params)
+    inp1 = [rpo.F.random_element() for _ in range(rpo.t)]
+    inp2 = [rpo.F.random_element() for _ in range(rpo.t)]
+    while inp1 == inp2:
+        inp2 = [rpo.F.random_element() for _ in range(rpo.t)]
+    assert rpo.permutation(inp1) != rpo.permutation(inp2)
 
 
-def test_rpo_t16_permutation_roundtrip():
-    rpo = RescuePrimeOptimized(RPO_GOLDILOCKS_T16)
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_permutation_roundtrip(name, params):
+    rpo = RescuePrimeOptimized(params)
     inp = [rpo.F.random_element() for _ in range(rpo.t)]
     assert rpo.permutation_inv(rpo.permutation(inp)) == inp
