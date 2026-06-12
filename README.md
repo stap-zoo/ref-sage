@@ -8,8 +8,10 @@ Shared modules at the root level:
 - **`fields.py`** frozen dataclass definitions for the prime fields used across primitives (BLS12-381, BN254, ST, Goldilocks, ...). Each entry stores the characteristic `p`, the smallest permutation exponent `alpha` with `gcd(alpha, p-1) = 1`, its modular inverse `alpha_inv`, and auxiliary parameters.
 - **`modes.py`** field-agnostic hash construction modes that can be instantiated by any permutation:
   - `compress_davies_meyer` Davies-Meyer compression: `trunc(perm(x_m ∥ x_c) + (x_m ∥ x_c))`.
+  - `compress_jive` *Jive_b* compression: `out[i] = sum_j (x[i+c*j] + perm(x)[i+c*j])`, see [Bouvier et al., CRYPTO 2023](https://eprint.iacr.org/2022/840) (Anemoi paper).
   - `hash_sponge` standard sponge (absorb rate-sized blocks with zero-padding, squeeze `digest_size` elements).
   - `hash_sponge_pi` variant *sponge-pi* of arithmetization-oriented sponges, see [Lefevre et al., ToSC 2025](https://tosc.iacr.org/index.php/ToSC/article/view/12073).
+  - `hash_sponge_hirose` Hirose variant of the sponge with a domain separator added after the final absorption, used by Anemoi.
   - `hash_sponge_safe` Sponge API *SAFE* for Field Elements, see [Aumasson et al., ePrint](https://eprint.iacr.org/2023/522).
   - `pad_zero` / `pad_pi` / `pad_one` padding rules used by the sponge variants.
 - **`utils.py`** shared helpers
@@ -34,6 +36,70 @@ Each primitive lives in its own folder and follows a common layout:
     </tr>
   </thead>
   <tbody>
+    <tr>
+      <td rowspan="9"><a href="https://eprint.iacr.org/2022/840">Anemoi</a></td>
+      <td><code>ANEMOI_BLS12_381_BASE_T2/T4/T6</code></td>
+      <td>BLS12-381 base (381 bit)</td>
+      <td>2 / 4 / 6</td>
+      <td>21 / 14 / 12</td>
+      <td>Jive 2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>ANEMOI_BLS12_381_SCALAR_T2/T4/T6</code></td>
+      <td>BLS12-381 scalar (255 bit)</td>
+      <td>2 / 4 / 6</td>
+      <td>21 / 14 / 12</td>
+      <td>Jive 2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>ANEMOI_BLS12_377_BASE_T2/T4/T6</code></td>
+      <td>BLS12-377 base (377 bit)</td>
+      <td>2 / 4 / 6</td>
+      <td>21 / 14 / 12</td>
+      <td>Jive 2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>ANEMOI_BLS12_377_SCALAR_T2/T4/T6</code></td>
+      <td>BLS12-377 scalar (253 bit)</td>
+      <td>2 / 4 / 6</td>
+      <td>19 / 13 / 11</td>
+      <td>Jive 2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>ANEMOI_BN254_BASE_T2/T4/T6</code></td>
+      <td>BN254 base (254 bit)</td>
+      <td>2 / 4 / 6</td>
+      <td>21 / 14 / 12</td>
+      <td>Jive 2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>ANEMOI_BN254_SCALAR_T2/T4/T6</code></td>
+      <td>BN254 scalar (254 bit)</td>
+      <td>2 / 4 / 6</td>
+      <td>21 / 14 / 12</td>
+      <td>Jive 2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>ANEMOI_PALLAS_T2/T4/T6</code></td>
+      <td>Pallas (255 bit)</td>
+      <td>2 / 4 / 6</td>
+      <td>21 / 14 / 12</td>
+      <td>Jive 2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>ANEMOI_VESTA_T2/T4/T6</code></td>
+      <td>Vesta (255 bit)</td>
+      <td>2 / 4 / 6</td>
+      <td>21 / 14 / 12</td>
+      <td>Jive 2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>ANEMOI_GOLDILOCKS_T8/T10/T12</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>8 / 10 / 12</td>
+      <td>11 / 11 / 10</td>
+      <td>Jive 2-to-1 compression, sponge</td>
+    </tr>
     <tr>
       <td><a href="https://eprint.iacr.org/2023/588">Arion</a></td>
       <td><code>ARION_BLS12_T3</code></td>
@@ -230,6 +296,28 @@ Each primitive lives in its own folder and follows a common layout:
       <td>7</td>
       <td>fixed-output sponge (2-to-1 compression)</td>
     </tr>
+    <tr>
+      <td rowspan="3"><a href="https://eprint.iacr.org/2023/107">Tip5</a></td>
+      <td><code>TIP5</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>16</td>
+      <td>5</td>
+      <td>fixed-length sponge</td>
+    </tr>
+    <tr>
+      <td><code>TIP4</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>16</td>
+      <td>5</td>
+      <td>fixed-length sponge</td>
+    </tr>
+    <tr>
+      <td><code>TIP4_PRIME</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>12</td>
+      <td>5</td>
+      <td>fixed-length sponge</td>
+    </tr>
   </tbody>
 </table>
 
@@ -248,4 +336,16 @@ The code requires SageMath. How to invoke it depends on the installation:
   pytest tests/
   ```
 
-Developed with `SageMath 10.6` using `Python 3.12.5`.
+### Requirements
+
+Besides SageMath itself, the following packages must be installed into the Python environment Sage uses:
+
+- **`blake3`** — XOF used to derive the Tip5 round constants (`utils.FieldElementSampler`).
+- **`pytest`** — only needed to run the test suite.
+
+```sh
+sage --pip install blake3 pytest   # standalone SageMath
+pip install blake3 pytest          # SageMath as a Python package
+```
+
+Developed with `SageMath 10.6` using `Python 3.12.5`, `blake3 1.0.8`, and `pytest 8.3.2`.

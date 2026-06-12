@@ -6,6 +6,8 @@ class Monolith:
     def __init__(self, params: MonolithParams):
         self.F = params.F
         self.t = params.t
+        self.to_field = params.to_field
+        self.from_field = params.from_field
 
         # Rounds
         self.R = params.R
@@ -26,10 +28,7 @@ class Monolith:
         self.r = params.r
         self.c = params.c
         self.d = params.d
-
-        # Field conversion helpers
-        self.to_field = params.to_field
-        self.from_field = params.from_field
+        
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -45,21 +44,21 @@ class Monolith:
         state = vecsub(state, self.rcons[round_idx])
         return matvecmul(self.M_inv, state)
 
+    def Bar(self, x):
+        digits = mixed_radix_decompose(x, self.si, self.from_field)
+        new_digits = [self.LUTs[s][d] for s, d in zip(self.si, digits)]
+        return mixed_radix_compose(new_digits, self.si, self.to_field)
+    
+    def Bar_inv(self, x):
+        digits = mixed_radix_decompose(x, self.si, self.from_field)
+        new_digits = [self.LUTs_inv[s][d] for s, d in zip(self.si, digits)]
+        return mixed_radix_compose(new_digits, self.si, self.to_field)
+
     def Bars(self, state: list) -> list:
-        result = list(state)
-        for i in range(self.u):
-            digits = mixed_radix_decompose(state[i], self.si, self.from_field)
-            new_digits = [self.LUTs[s][d] for s, d in zip(self.si, digits)]
-            result[i] = mixed_radix_compose(new_digits, self.si, self.to_field)
-        return result
+        return [self.Bar(x) if i < self.u else x for i, x in enumerate(state)]
     
     def Bars_inv(self, state: list) -> list:
-        result = list(state)
-        for i in range(self.u):
-            digits = mixed_radix_decompose(state[i], self.si, self.from_field)
-            new_digits = [self.LUTs_inv[s][d] for s, d in zip(self.si, digits)]
-            result[i] = mixed_radix_compose(new_digits, self.si, self.to_field)
-        return result
+        return [self.Bar_inv(x) if i < self.u else x for i, x in enumerate(state)]
 
     def Bricks(self, state: list) -> list:
         result = [state[0]]

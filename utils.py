@@ -1,4 +1,4 @@
-from hashlib import shake_128, shake_256
+from hashlib import shake_128, shake_256, sha256
 from blake3 import blake3
 from math import ceil
 
@@ -323,3 +323,16 @@ def simple_circulant_matrix(t: int) -> list[list[int]]:
     """MDS guaranteed only for t in {2, 3, 4} with p > 130. 
     See https://arxiv.org/pdf/2303.04639 (Arion paper), Remark 4."""
     return circulant(row=list(range(1, t + 1)))
+
+def tip5_mds_matrix(t: int = 16) -> list[list[int]]:
+    """Tip5's 16x16 circulant MDS matrix. First column corresponds to 16-bit little-endian
+    chunks of SHA-256("Tip5"). Entries are 16-bit by construction, enabling delayed modular reduction.
+    Reused verbatim by Tip4 (t = 16) and Monolith-31 (t = 16);
+    MDS over both Goldilocks 2^64 - 2^32 + 1 and Mersenne 2^31 - 1.
+    For reduced state sizes t < 16 (e.g. Tip4' with t = 12), the circulant is built
+    from the first t entries of the column, as in the sage reference implementation."""
+    if not 1 <= t <= 16:
+        raise ValueError(f"t must be in 1..16. Got {t}")
+    digest = sha256(b"Tip5").digest()
+    first_column = [int.from_bytes(digest[2 * i: 2 * i + 2], "little") for i in range(16)]
+    return circulant(col=first_column[:t])

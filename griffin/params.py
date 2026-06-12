@@ -89,7 +89,7 @@ class GriffinParams:
 
     def _init_matrix(self):
         if self.t == 3:
-            return circulant([2, 1, 1])
+            return circulant([2, 1, 1]) 
         else:
             return m4_to_block_circulant_matrix(self.t)
 
