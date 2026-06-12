@@ -1,6 +1,6 @@
 from sage.all import GF, Integer, Matrix
 
-from utils import sample_from_shake_128, invert_LUT
+from utils import FieldElementSampler, invert_LUT
 
 class ReinforcedConcreteParams:
     def __init__(
@@ -100,7 +100,7 @@ class ReinforcedConcreteParams:
     def _init_rcons(self) -> list[list[int]]:
         n_bytes = (self.p.bit_length() + 7) // 8
         seed = b"ReinforcedConcrete" + self.p.to_bytes(n_bytes, "little")
-        return sample_from_shake_128(seed, self.p, self.R + 1, self.t, sampling="bitmask")
+        return FieldElementSampler(seed, self.p, xof="shake_128", sampling="bitmask").grid(self.R + 1, self.t)
     
     def _init_rounds(self, R_pre, R_bars, R_post) -> (int,int,int):
         # TODO implement

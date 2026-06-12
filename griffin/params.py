@@ -1,7 +1,7 @@
 from sage.all import GF, Integer, matrix, legendre_symbol
 from math import gcd
 
-from utils import m4_to_block_circulant_matrix, circulant, ShakeReader
+from utils import m4_to_block_circulant_matrix, circulant, FieldElementSampler
 
 
 class GriffinParams:
@@ -94,23 +94,23 @@ class GriffinParams:
             return m4_to_block_circulant_matrix(self.t)
 
     def _init_constants(self):
-        # Initialize ShakeReader, seeded with "Griffin" followed by the field characteristic serialized as little-endian 64-bit limbs.
+        # Initialize the sampler, seeded with "Griffin" followed by the field characteristic serialized as little-endian 64-bit limbs.
         n_bytes = ((self.p.bit_length() + 63) // 64) * 8
         seed = b"Griffin" + self.p.to_bytes(n_bytes, "little")
-        reader = ShakeReader(seed, self.p)
+        reader = FieldElementSampler(seed, self.p, xof="shake_128", sampling="bitmask")
 
         # Generate round constants. The last round has no round constants.
-        rcons = [[reader.field_element() for _ in range(self.t)] for _ in range(self.R - 1)]
+        rcons = [[reader.next() for _ in range(self.t)] for _ in range(self.R - 1)]
         
         # generate coefficients for the quadratic maps L_i
         coeffs = []
 
-        # random a/b: distinct, non-zero, and legendre_symbol(a^2 - 4*b, p) == -1
+        # random a/b: distinct, non-zero, and legendre_symbol(a^2 - 4*b, p) == -1 
         while True:
-            a = reader.nonzero_field_element()
-            b = reader.nonzero_field_element()
+            a = reader.next_nonzero()
+            b = reader.next_nonzero()
             while a == b:
-                b = reader.nonzero_field_element()
+                b = reader.next_nonzero()
             if legendre_symbol(a**2 - 4 * b, self.p) == -1:
                 coeffs.append([a, b])
                 break
@@ -121,7 +121,7 @@ class GriffinParams:
             a_i = (a_0 * i) % self.p
             b_i = (b_0 * i * i) % self.p
             while a_i == b_i:
-                b_i = reader.nonzero_field_element()
+                b_i = reader.next_nonzero()
             coeffs.append([a_i, b_i])
 
         return rcons, coeffs

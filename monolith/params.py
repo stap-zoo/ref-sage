@@ -1,6 +1,6 @@
 from sage.all import GF, Integer, Matrix
 
-from utils import sample_from_shake_128, invert_LUT
+from utils import FieldElementSampler, invert_LUT
 
 class MonolithParams:
     def __init__(
@@ -91,7 +91,7 @@ class MonolithParams:
                 + bytes([self.t, self.R])
                 + (struct.pack('<I', self.p) if bits <= 32 else struct.pack('<Q', self.p))
                 + (bytes([8, 8, 8, 7])       if bits <= 32 else bytes([8] * 8)))
-        return sample_from_shake_128(seed, self.p, self.R - 1, self.t, sampling="naive")
+        return FieldElementSampler(seed, self.p, xof="shake_128", sampling="naive").grid(self.R - 1, self.t)
     
     def _init_rounds(self) -> int:
         # TODO implement

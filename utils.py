@@ -1,125 +1,103 @@
 from hashlib import shake_128, shake_256
+from blake3 import blake3
 from math import ceil
 
 # ---------------------------------------------------------------------------
-# Sample randomness
+# Sample field elements
 # ---------------------------------------------------------------------------
 
-def sample_from_shake_128(seed: bytes, p: int, num_rows: int, num_cols: int, sampling: str) -> list[list[int]]:
-    """Sample a num_rows x num_cols grid of field elements in [0, p) via SHAKE128.
+# Extendable-output functions usable as byte streams: each entry maps a name to a
+# constructor taking the seed and returning an object whose digest(n) yields the
+# first n bytes of the stream.
 
-    sampling="bitmask" : reads ceil(p.bit_length()/8) bytes, zeroes bits above p.bit_length() in the last byte, rejects if >= p.
-                         Matches the Rust field_element_from_shake / ff::PrimeField::from_repr from https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo/-/blob/master/plain_impls/src/fields/utils.rs?ref_type=heads.
-    sampling="naive"   : reads a fixed-width word (4 bytes if p fits in 32 bits, 8 bytes otherwise) as little-endian, rejects if >= p.
-    
-    This sampling method is used in Reinforced Concrete (sampling="bitmask") and Monolith (sampling="naive").
-    """
-    buf = shake_128(seed).digest(10_000)
-    pos = 0
+XOFS = {
+    "shake_128": shake_128,
+    "shake_256": shake_256,
+    "blake3": blake3,
+}
 
-    if sampling == "bitmask":
-        bits    = p.bit_length()
-        n_bytes = ceil(bits / 8)
-        mod     = bits % 8
-        mask    = ((1 << mod) - 1) if mod != 0 else 0xFF
+class FieldElementSampler:
+    """Stateful XOF reader, sampling field elements in [0, p) one at a time.
 
-        def _read() -> int:
-            nonlocal pos
-            while True:
-                raw      = bytearray(buf[pos : pos + n_bytes])
-                pos     += n_bytes
-                raw[-1] &= mask
-                val      = int.from_bytes(raw, "little")
-                if val < p:
-                    return val
+    Cuts the byte stream of the seeded XOF into fixed-size little-endian chunks and maps each chunk to a field element according to the sampling strategy:
 
-    elif sampling == "naive":
-        word = 4 if p.bit_length() <= 32 else 8
+    sampling="bitmask" : reads ceil(p.bit_length()/8) bytes, zeroes bits above p.bit_length() in the last byte, rejects (resamples) if >= p.
+                         Matches the Rust field_element_from_shake / ff::PrimeField::from_repr from
+                         https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo/-/blob/master/plain_impls/src/fields/utils.rs?ref_type=heads.
+                         Used in Reinforced Concrete and Griffin (with xof="shake_128").
+    sampling="naive"   : reads a fixed-width word (4 bytes if p fits in 32 bits, 8 bytes otherwise), rejects if >= p.
+                         Used in Monolith (with xof="shake_128").
+    sampling="mod"     : reads ceil(p.bit_length()/8)+1 bytes, reduces mod p (no rejection).
+                         Matches Rescue Prime / RPO's get_round_constants from 
+                         https://github.com/KULeuven-COSIC/Marvellous and https://github.com/ASDiscreteMathematics/rpo.
+                         Used in Rescue, Rescue Prime / RPO, and Arion (with xof="shake_256").
 
-        def _read() -> int:
-            nonlocal pos
-            while True:
-                val  = int.from_bytes(buf[pos : pos + word], "little")
-                pos += word
-                if val < p:
-                    return val
-
-    else:
-        raise ValueError(f"Unknown sampling strategy: {sampling!r}. Use 'bitmask' or 'naive'.")
-
-    return [[_read() for _ in range(num_cols)] for _ in range(num_rows)]
-
-def sample_from_shake_256(seed: bytes, p: int, num_rows: int, num_cols: int, sampling: str) -> list[list[int]]:
-    """Sample a num_rows x num_cols grid of field elements in [0, p) via SHAKE256.
-
-    sampling="mod" : reads ceil(p.bit_length()/8)+1 bytes per element as little-endian,
-                      reduces mod p (no rejection). Matches Rescue Prime / RPO's
-                      get_round_constants.
-
-    This sampling method is used in Rescue Prime / RPO.
-    """
-    if sampling == "mod":
-        bytes_per_int = (p.bit_length() + 7) // 8 + 1
-
-        def _read(buf: bytes, i: int) -> int:
-            chunk = buf[bytes_per_int * i: bytes_per_int * (i + 1)]
-            return int.from_bytes(chunk, "little") % p
-
-    else:
-        raise ValueError(f"Unknown sampling strategy: {sampling!r}. Use 'mod'.")
-
-    buf = shake_256(seed).digest(bytes_per_int * num_rows * num_cols)
-    flat = [_read(buf, i) for i in range(num_rows * num_cols)]
-    return [flat[i * num_cols:(i + 1) * num_cols] for i in range(num_rows)]
-
-# ---------------------------------------------------------------------------
-# Stateful SHAKE XOF reader
-# ---------------------------------------------------------------------------
-
-class ShakeReader:
-    """Stateful SHAKE128 XOF reader, sampling field elements one at a time.
-
-    Matches `field_element_from_shake` / `field_element_from_shake_without_0`
-    from https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo/-/blob/master/plain_impls/src/fields/utils.rs:
-    reads ceil(p.bit_length()/8) bytes, masks the unused high bits of the last
-    byte, interprets as little-endian, and rejects (resamples) if the result
-    is >= p (or == 0 for `nonzero_field_element`).
+    n_bytes overrides the strategy's chunk size, e.g. for Tip5's round constants (xof="blake3", sampling="mod"), 
+    which read t bytes per element instead of ceil(p.bit_length()/8)+1.
     """
 
-    def __init__(self, seed: bytes, p: int):
+    def __init__(self, seed: bytes, p: int, xof: str = "shake_128", sampling: str = "bitmask", n_bytes: int = None):
+        if xof not in XOFS:
+            raise ValueError(f"Unknown XOF: {xof}. Use one of {sorted(XOFS)}.")
         self.p = p
-        self._shake = shake_128(seed)
+        self._xof = XOFS[xof](seed)
 
         bits = p.bit_length()
-        self.n_bytes = ceil(bits / 8)
-        mod = bits % 8
-        self.mask = ((1 << mod) - 1) if mod != 0 else 0xFF
+        if sampling == "bitmask":
+            self.n_bytes = ceil(bits / 8)
+            mod = bits % 8
+            self.mask = ((1 << mod) - 1) if mod != 0 else 0xFF
+            self.reduce_mod = False
+        elif sampling == "naive":
+            self.n_bytes = 4 if bits <= 32 else 8
+            self.mask = 0xFF
+            self.reduce_mod = False
+        elif sampling == "mod":
+            self.n_bytes = ceil(bits / 8) + 1
+            self.mask = 0xFF
+            self.reduce_mod = True
+        else:
+            raise ValueError(f"Unknown sampling strategy: {sampling}. Use 'bitmask', 'naive', or 'mod'.")
 
-        self._buf = b""
+        if n_bytes is not None:
+            self.n_bytes = n_bytes
+
         self._pos = 0
         self._size = max(1024, self.n_bytes * 64)
-        self._buf = self._shake.digest(self._size)
+        self._buf = self._xof.digest(self._size)
 
     def _ensure(self, n: int) -> None:
+        """Grow the buffered XOF output until at least n unread bytes are available.
+        An XOF's longer digest is an extension of its shorter one, so re-requesting
+        the doubled size extends the stream while keeping every previously read
+        position valid."""
         while len(self._buf) - self._pos < n:
             self._size *= 2
-            self._buf = self._shake.digest(self._size)
+            self._buf = self._xof.digest(self._size)
 
-    def field_element(self) -> int:
+    def next(self) -> int:
+        """Sample the next field element from the stream."""
         while True:
             self._ensure(self.n_bytes)
             raw = bytearray(self._buf[self._pos:self._pos + self.n_bytes])
             self._pos += self.n_bytes
             raw[-1] &= self.mask
             val = int.from_bytes(raw, "little")
-            if val < self.p:
+            if self.reduce_mod:
+                return val % self.p
+            if val < self.p: # rejection sampling
                 return val
 
-    def nonzero_field_element(self) -> int:
+    def next_nonzero(self) -> int:
+        """Sample the next field element from the stream, skipping zeros."""
         while True:
-            val = self.field_element()
+            val = self.next()
             if val != 0:
                 return val
+
+    def grid(self, num_rows: int, num_cols: int) -> list[list[int]]:
+        """Sample a num_rows x num_cols grid of field elements."""
+        return [[self.next() for _ in range(num_cols)] for _ in range(num_rows)]
 
 # ---------------------------------------------------------------------------
 # Matrix utils

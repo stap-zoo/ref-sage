@@ -1,7 +1,7 @@
 from sage.all import GF, Integer, matrix, legendre_symbol
 from math import gcd
 
-from utils import simple_circulant_matrix, sample_from_shake_256
+from utils import simple_circulant_matrix, FieldElementSampler
 
 
 class ArionParams:
@@ -123,14 +123,14 @@ class ArionParams:
         # used by the reference implementation in https://github.com/sca-research/Arion.
         seed = f"Arion({self.p},{self.t},{self.R})".encode("ascii")
 
-        rcons = sample_from_shake_256(seed + b"aff", self.p, self.R, self.t, sampling="mod")
-
-        n = self.R * (self.t - 1)
-        coeffs_h = [row[0] for row in sample_from_shake_256(seed + b"h", self.p, n, 1, sampling="mod")]
+        rcons = FieldElementSampler(seed + b"aff", self.p, xof="shake_256", sampling="mod").grid(self.R, self.t)
+        coeffs_h = FieldElementSampler(seed + b"h", self.p, xof="shake_256", sampling="mod").grid(self.R, self.t - 1)
 
         # coeffs_g: pairs [a, b] with legendre_symbol(a^2 - 4*b, p) == -1, rejection-sampled
-        # from a candidate pool drawn from the same SHAKE stream.
-        candidates = sample_from_shake_256(seed + b"g", self.p, 4 * n, 2, sampling="mod")
+        # from a candidate pool drawn from the same SHAKE stream. Sampled flat (round-major)
+        # since the rejection breaks the row alignment of the stream, then reshaped.
+        n = self.R * (self.t - 1)
+        candidates = FieldElementSampler(seed + b"g", self.p, xof="shake_256", sampling="mod").grid(4 * n, 2)
         coeffs_g = []
         for a, b in candidates:
             if legendre_symbol(a**2 - 4 * b, self.p) == -1:
@@ -140,9 +140,8 @@ class ArionParams:
         if len(coeffs_g) < n:
             raise RuntimeError("not enough valid coeffs_g candidates; widen the candidate pool")
 
-        # Reshape flat (round-major) lists to [round][branch]
+        # Reshape to [round][branch]
         w = self.t - 1
         coeffs_g = [coeffs_g[r * w:(r + 1) * w] for r in range(self.R)]
-        coeffs_h = [coeffs_h[r * w:(r + 1) * w] for r in range(self.R)]
         return coeffs_g, coeffs_h, rcons
 

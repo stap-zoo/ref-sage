@@ -1,4 +1,4 @@
-from utils import vandermonde_mds_matrix, sample_from_shake_256
+from utils import vandermonde_mds_matrix, FieldElementSampler
 from complexities import gb_comp
 from sage.all import GF, Integer, matrix, vector
 from math import ceil, floor, gcd, log
@@ -88,7 +88,7 @@ class RescueParams:
         seed = b"winteriscoming"
         num_blocks = 1
         while True:
-            rows = sample_from_shake_256(seed, self.p, num_blocks * self.t + 2, self.t, sampling="mod")
+            rows = FieldElementSampler(seed, self.p, xof="shake_256", sampling="mod").grid(num_blocks * self.t + 2, self.t)
             for i in range(0, len(rows) - self.t - 1, self.t):
                 constants_matrix = rows[i:i + self.t]
                 if matrix(self.F, constants_matrix).is_invertible():
