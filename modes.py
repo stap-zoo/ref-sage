@@ -12,6 +12,26 @@ def compress_davies_meyer(perm, x_m: list, x_c: list, digest_size: int, to_field
     y = perm(x)
     return [y[i] + x[i] for i in range(digest_size)] # left-truncate to digest_size
 
+def compress_jive(perm, inputs: list[list], b: int = None, to_field=lambda x: x) -> list:
+    """Anemoi's Jive_b compression mode (https://eprint.iacr.org/2022/840.pdf, Sec. 3.2):
+        Jive_b(x_1, ..., x_b) = sum_j x_j + sum_j P(x_1 || ... || x_b)_j
+    where P is the permutation and the state is viewed as b blocks of equal size m = t / b. 
+    Compresses b*m field elements to m, effectively giving a b-to-1 compression.
+    `inputs` is the list of b blocks (each a list of m elements)."""
+    if b is None:
+        b = len(inputs)
+    if len(inputs) != b:
+        raise ValueError(f"expected {b} input blocks, got {len(inputs)}")
+    m = len(inputs[0])
+    if any(len(blk) != m for blk in inputs):
+        raise ValueError("all input blocks must have equal length")
+
+    state = [w for blk in inputs for w in blk]     # x_1 || ... || x_b
+    out = perm(state)
+    if len(out) != b * m:
+        raise ValueError(f"permutation output length {len(out)} != b*m = {b * m}")
+
+    return [sum((state[i + m * j] + out[i + m * j] for j in range(b)), to_field(0)) for i in range(m)]
 
 # ---------------------------------------------------------------------------
 # Padding rules
@@ -117,6 +137,36 @@ def hash_sponge_pi(perm, data: list, state_size: int, rate: int, capacity: int, 
         if len(output) < digest_size:
             state = perm(state)
     return output[:digest_size]
+
+
+def hash_sponge_hirose(perm, data: list, state_size: int, rate: int, capacity: int, digest_size: int, sigma: int, absorb=add_to_start, to_field=lambda x: x) -> list:
+    """Hirose variant of the sponge: zero IV, domain separator sigma added to the last
+    state element after the final absorb permutation, per-element squeezing with a
+    re-permutation every `rate` elements. Used by Anemoi (https://eprint.iacr.org/2022/840)."""
+
+    if state_size != rate + capacity:
+        raise ValueError("state_size must equal rate + capacity")
+    if len(data) % rate != 0:
+        raise ValueError("data must be padded to a multiple of the rate")
+
+    blocks = [data[i:i + rate] for i in range(0, len(data), rate)]
+
+    # Initialize state
+    state = [to_field(0)] * state_size
+
+    # Absorption phase
+    for block in blocks:
+        state = absorb(state, block)
+        state = perm(state)
+    state[-1] += to_field(sigma)
+
+    # Squeezing phase
+    digest = []
+    while True:
+        digest.extend(state[:min(rate, digest_size - len(digest))])
+        if len(digest) == digest_size:
+            return digest
+        state = perm(state)
 
 
 def hash_sponge_safe(perm, data: list, state_size: int, rate: int, capacity: int, digest_size: int, IV: list = None, absorb=add_to_start, to_field=lambda x: x) -> list:

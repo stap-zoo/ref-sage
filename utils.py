@@ -143,6 +143,14 @@ def circulant(row: list = None, *, col: list = None) -> list[list]:
     n = len(row)
     return [row[(n - i) % n:] + row[:(n - i) % n] for i in range(n)]
 
+def is_mds(M: list[list], field=None) -> bool:
+    """A matrix is MDS iff all its minors (of every order) are non-zero.
+    Accepts a list-of-lists; entries may be ints (then `field` must be given,
+    e.g. GF(p)) or Sage field elements (then `field` is inferred)."""
+    from sage.all import matrix
+    m = matrix(field, M) if field is not None else matrix(M)
+    return all(minor != 0 for k in range(1, m.nrows() + 1) for minor in m.minors(k))
+
 def matvecmul(matrix: list[list], vec: list) -> list:
     """Matrix-vector product over any ring. Returns a new list."""
     return [sum(m * v for m, v in zip(row, vec)) for row in matrix]
@@ -177,7 +185,6 @@ def mixed_radix_decompose(val, si: list[int], from_field) -> list[int]:
     res[0] = n
     return res
 
-
 def mixed_radix_compose(digits: list[int], si: list[int], to_field):
     result = digits[0]
     for digit, s in zip(digits[1:], si[1:]):
@@ -199,6 +206,91 @@ def invert_LUT(LUT: list[int]) -> list[int]:
 # MDS Matrix generation methods
 # ---------------------------------------------------------------------------
 
+# --- Pseudo-Hadamard transform ---------------------------------------------
+def pht_matrix(alpha) -> list[list]:
+    """Generalized pseudo-Hadamard transform [[1, a], [a, 1 + a^2]]:
+    2 additions, 2 multiplications; the classic PHT [[1,1],[1,2]] at alpha = 1.
+    Anemoi's M_2 with alpha = g (Figure 7a in https://eprint.iacr.org/2022/840.pdf).
+    det = 1 identically, so it is MDS iff all entries are nonzero: alpha != 0 and alpha^2 != -1."""
+    one = alpha**0
+    return [[one,   alpha              ],
+            [alpha, one + alpha * alpha]]
+
+def pht_apply(x: list, alpha) -> list:
+    """Evaluate pht_matrix(alpha) @ x: 2 additions, 2 multiplications."""
+    x0 = x[0] + alpha * x[1]
+    x1 = x[1] + alpha * x0
+    return [x0, x1]
+
+# --- Duval-Leurent low-addition MDS matrices -------------------------------
+# DL18: https://tosc.iacr.org/index.php/ToSC/article/view/888
+# Catalog labels read M^{adds,muls}_{dim,depth}; function names follow m{dim}{depth}_{adds}{muls}.
+# All are generically MDS but can degenerate for specific (field, alpha):
+# Verify concrete instances with is_mds.
+
+def dl_m33_52_matrix(alpha) -> list[list]:
+    """DL18 M^{5,2}_{3,3} (Fig. 6): 3x3, depth 3, 5 additions, 2 multiplications.
+    Anemoi's M_3 with alpha = g^i, smallest i passing is_mds."""
+    one = alpha**0
+    return [[one + alpha, one, one + alpha],
+            [one,         one, alpha      ],
+            [alpha,       one, one        ]]
+
+def dl_m33_52_apply(x: list, alpha) -> list:
+    """Evaluate dl_m33_52_matrix(alpha) @ x: 5 additions, 2 multiplications."""
+    x0, x1, x2 = x
+    t = x0 + alpha * x2
+    z2 = (x2 + x1) + alpha * x0
+    return [t + z2, x1 + t, z2]
+
+def dl_m46_83_matrix(alpha) -> list[list]:
+    """DL18 M^{8,3}_{4,6} (Fig. 8): 4x4, depth 6, 8 additions, 3 multiplications.
+    Anemoi's M_4 with alpha = g^i, smallest i passing is_mds"""
+    one = alpha**0
+    a, a2 = alpha, alpha * alpha
+    return [[one,     one + a,     a,       a          ],
+            [a2,      a2 + a,      one + a, one + a + a],
+            [a2,      a2,          one,     one + a    ],
+            [one + a, one + a + a, a,       one + a    ]]
+
+def dl_m46_83_apply(x: list, alpha) -> list:
+    """Evaluate dl_m46_83_matrix(alpha) @ x: 8 additions, 3 multiplications.
+    Anemoi's M_4 with alpha = g^i, smallest i passing is_mds."""
+    x0, x1, x2, x3 = x
+    x0 = x0 + x1
+    x2 = x2 + x3
+    x3 = x3 + alpha * x0
+    x1 = alpha * (x1 + x2)
+    x0 = x0 + x1
+    x2 = x2 + alpha * x3
+    x1 = x1 + x2
+    x3 = x3 + x0
+    return [x0, x1, x2, x3]
+
+def dl_m44_84_matrix(alpha) -> list[list]:
+    """DL18 M^{8,4}_{4,4}: 4x4, depth 4, 8 additions, 4 multiplications.
+    Griffin's/Poseidon's M_4 with alpha = 2 (MDS for all primes p > 2^31 at alpha = 2)."""
+    one = alpha**0
+    a, a2 = alpha, alpha * alpha
+    return [[a2 + one, a2 + a + one, one,      a + one     ],
+            [a2,       a2 + a,       one,      one         ],
+            [one,      a + one,      a2 + one, a2 + a + one],
+            [one,      one,          a2,       a2 + a      ]]
+
+def dl_m44_84_apply(x: list, alpha) -> list:
+    """Evaluate dl_m44_84_matrix(alpha) @ x: 8 additions, 4 multiplications
+    by alpha / alpha^2 (shifts when alpha = 2)."""
+    x0, x1, x2, x3 = x
+    a, a2 = alpha, alpha * alpha
+    t0 = x0 + x1
+    t1 = x2 + x3
+    t2 = a * x1 + t1
+    t3 = a * x3 + t0
+    t4 = a2 * t1 + t3
+    t5 = a2 * t0 + t2
+    return [t3 + t5, t5, t2 + t4, t4]
+
+# --- Matrix generation strategies ------------------------------------------
 def m4_to_block_circulant_matrix(t: int, M4: list[list[int]] = None) -> list[list[int]]:
     """Construct the txt matrix M = circ(2,1,...,1) (x) M4 for t = 4*t_, i.e. a block-circulant matrix 
     with 4x4 blocks: block (i,j) is 2*M4 on the diagonal and M4 off-diagonal. If M4 is not given, use the 
@@ -213,7 +305,9 @@ def m4_to_block_circulant_matrix(t: int, M4: list[list[int]] = None) -> list[lis
         raise ValueError("t must be a multiple of 4")
 
     if M4 is None:
-        M4 = [[5, 7, 1, 3],[4, 6, 1, 1],[1, 3, 5, 7],[1, 1, 4, 6]]
+        # [[5, 7, 1, 3],[4, 6, 1, 1],[1, 3, 5, 7],[1, 1, 4, 6]]
+        # See Figure 13 in https://tosc.iacr.org/index.php/ToSC/article/view/888/839
+        M4 = dl_m44_84_matrix(alpha=2)
     
     if t == 4:
         return M4
