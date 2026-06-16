@@ -318,6 +318,93 @@ Each primitive lives in its own folder and follows a common layout:
       <td>5</td>
       <td>fixed-length sponge</td>
     </tr>
+    <tr>
+      <td rowspan="5"><a href="https://eprint.iacr.org/2019/458">Poseidon</a></td>
+      <td><code>POSEIDON_BN254_T3</code></td>
+      <td>BN254 scalar (254 bit)</td>
+      <td>3</td>
+      <td>8 + 57</td>
+      <td>sponge, Davies–Meyer 2-to-1</td>
+    </tr>
+    <tr>
+      <td><code>POSEIDON_BLS12_T2/T3</code></td>
+      <td>BLS12-381 scalar (255 bit)</td>
+      <td>2 / 3</td>
+      <td>8 + 56 / 8 + 57</td>
+      <td>sponge, Davies–Meyer 2-to-1</td>
+    </tr>
+    <tr>
+      <td><code>POSEIDON_ST_T3</code></td>
+      <td>ST (250 bit)</td>
+      <td>3</td>
+      <td>8 + 84</td>
+      <td>sponge, Davies–Meyer 2-to-1</td>
+    </tr>
+    <tr>
+      <td><code>POSEIDON_GOLDILOCKS_T8/T12</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>8 / 12</td>
+      <td>8 + 22</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>POSEIDON_MERSENNE_T16/T24</code></td>
+      <td>Mersenne31 (31 bit)</td>
+      <td>16 / 24</td>
+      <td>8 + 14 / 8 + 22</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td rowspan="4"><a href="https://eprint.iacr.org/2023/323">Poseidon2</a></td>
+      <td><code>POSEIDON2_BLS12_T2/T3/T4/T8</code></td>
+      <td>BLS12-381 scalar (255 bit)</td>
+      <td>2 / 3 / 4 / 8</td>
+      <td>8 + 56 (t=8: 8 + 57)</td>
+      <td>sponge, Davies–Meyer 2-to-1</td>
+    </tr>
+    <tr>
+      <td><code>POSEIDON2_BN254_T3</code></td>
+      <td>BN254 scalar (254 bit)</td>
+      <td>3</td>
+      <td>8 + 56</td>
+      <td>sponge, Davies–Meyer 2-to-1</td>
+    </tr>
+    <tr>
+      <td><code>POSEIDON2_GOLDILOCKS_T8/T12/T16/T20</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>8 / 12 / 16 / 20</td>
+      <td>8 + 22</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>POSEIDON2_MERSENNE_T16/T24</code></td>
+      <td>Mersenne31 (31 bit)</td>
+      <td>16 / 24</td>
+      <td>8 + 14 / 8 + 22</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td rowspan="3">Neptune</td>
+      <td><code>NEPTUNE_BN254_T4</code> / <code>NEPTUNE_BLS12_T2/T4</code></td>
+      <td>BN254 (254 bit) / BLS12-381 (255 bit)</td>
+      <td>4 / 2 / 4</td>
+      <td>6 + 68 / 8 + 56 / 6 + 68</td>
+      <td>sponge, Davies–Meyer 2-to-1</td>
+    </tr>
+    <tr>
+      <td><code>NEPTUNE_ST_T4</code></td>
+      <td>ST (250 bit)</td>
+      <td>4</td>
+      <td>6 + 96</td>
+      <td>sponge, Davies–Meyer 2-to-1</td>
+    </tr>
+    <tr>
+      <td><code>NEPTUNE_GOLDILOCKS_T8/T12</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>8 / 12</td>
+      <td>6 + 38 / 6 + 42</td>
+      <td>sponge</td>
+    </tr>
   </tbody>
 </table>
 
