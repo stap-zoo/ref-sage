@@ -1,8 +1,8 @@
 from math import gcd
 
-from sage.all import GF, Integer, matrix
+from sage.all import GF, Integer
 
-from utils import invert_LUT, FieldElementSampler, tip5_mds_matrix
+from utils import invert_LUT, XOFFieldElementSampler, tip5_mds_matrix, map_to_field, invert_matrix
 
 
 class Tip5Params:
@@ -63,11 +63,11 @@ class Tip5Params:
 
         # Affine layer
         M = M if M is not None else self._init_mds()
-        self.M = [[self.to_field(x) for x in row] for row in M]
-        self.M_inv = [list(row) for row in matrix(self.F, self.M).inverse()]
+        self.M = map_to_field(M, self.to_field)
+        self.M_inv = invert_matrix(self.M)
 
         rcons = rcons if rcons is not None else self._init_rcons(p, t, R)
-        self.rcons = [[self.to_field(x) for x in row] for row in rcons]
+        self.rcons = map_to_field(rcons, self.to_field)
 
         # Hash modes
         self.d = d
@@ -99,7 +99,7 @@ class Tip5Params:
     def _init_mds(self) -> list[list[int]]:
         # TODO check whether the Monolith/RPO Goldilocks T12 row circulant(row=[7, 23, 8, 26, 13, 10, 9, 7, 6, 22, 21, 8])
         # should be used instead (KATs were generated with the truncated Tip5 column below, matching the sage reference).
-        return tip5_mds_matrix(self.t)
+        return tip5_mds_matrix(self.p, self.t)
 
     @staticmethod
     def _init_rcons(p: int, t: int, R: int) -> list[list[int]]:
@@ -113,7 +113,7 @@ class Tip5Params:
         for r in range(R):
             row = []
             for i in range(t):
-                sampler = FieldElementSampler(b"Tip5" + bytes([i + r * t]), p, xof="blake3", sampling="mod", n_bytes=t)
+                sampler = XOFFieldElementSampler(seed=b"Tip5" + bytes([i + r * t]), p=p, xof="blake3", sampling="mod", n_bytes=t)
                 row.append((sampler.next() * mont_R_inv) % p)
             rcons.append(row)
         return rcons

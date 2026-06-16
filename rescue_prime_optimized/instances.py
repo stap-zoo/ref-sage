@@ -14,7 +14,6 @@ RPO_GOLDILOCKS_T12 = RescuePrimeOptimizedParams(
     kappa=128,
     c=4,
     R=7,
-    M=circulant([7, 23, 8, 26, 13, 10, 9, 7, 6, 22, 21, 8]),
     d=4,
 )
 
@@ -26,6 +25,5 @@ RPO_GOLDILOCKS_T16 = RescuePrimeOptimizedParams(
     kappa=160,
     c=6,
     R=7,
-    M=circulant([256, 2, 1073741824, 2048, 16777216, 128, 8, 16, 524288, 4194304, 1, 268435456, 1, 1024, 2, 8192]),
     d=5,
 )

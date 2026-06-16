@@ -8,7 +8,7 @@ from rescue.instances import (
     RESCUE_GOLDILOCKS_T12,
 )
 from rescue_prime.instances import RESCUE_PRIME_BLS12_T3, RESCUE_PRIME_GOLDILOCKS_T8
-from utils import vandermonde_mds_matrix, FieldElementSampler
+from utils import vandermonde_mds_matrix, XOFFieldElementSampler
 from fields import BLS12_381_SCALAR, GOLDILOCKS
 
 INSTANCES = [
@@ -192,6 +192,6 @@ def test_field_element_sampler_bls12_rescue_prime():
     params = RESCUE_PRIME_BLS12_T3
     p = params.p
     seed = f"Rescue-XLIX({p},{params.t},{params.c},{params.kappa})".encode("ascii")
-    rc = FieldElementSampler(seed, p, xof="shake_256", sampling="mod").grid(2 * params.R, params.t)
+    rc = XOFFieldElementSampler(seed=seed, p=p, xof="shake_256", sampling="mod").grid(2 * params.R, params.t)
     assert len(rc) == 2 * params.R
     assert rc == [[params.from_field(x) for x in row] for row in params.rcons]

@@ -1,5 +1,5 @@
 from rescue.params import RescueParams
-from utils import vandermonde_mds_matrix, FieldElementSampler
+from utils import vandermonde_mds_matrix, XOFFieldElementSampler
 from complexities import gb_comp
 from math import ceil, floor
 
@@ -30,4 +30,4 @@ class RescuePrimeParams(RescueParams):
 
     def _init_rcons(self) -> list[list[int]]:
         seed = f"{self.LABEL}({self.p},{self.t},{self.c},{self.kappa})".encode("ascii")
-        return FieldElementSampler(seed, self.p, xof="shake_256", sampling="mod").grid(2 * self.R, self.t)
+        return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_256", sampling="mod").grid(2 * self.R, self.t)

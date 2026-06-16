@@ -54,36 +54,36 @@ class ReinforcedConcrete:
         state = vecsub(state, self.rcons[round_idx])
         return matvecmul(self.M_inv, state)
 
-    def Fi(self, val, i):
+    def _F(self, val, i):
         return val ** 2 + self.a_coeffs[i] * val + self.b_coeffs[i]
 
     def Bricks(self, state: list) -> list:
         result = [state[0] ** self.alpha]
         for i in range(1, self.t):
-            result.append(state[i] * self.Fi(state[i - 1], i - 1))
+            result.append(state[i] * self._F(state[i - 1], i - 1))
         return result
 
     def Bricks_inv(self, state: list) -> list:
         result = [state[0] ** self.alpha_inv]
         for i in range(1, self.t):
-            result.append(state[i] * self.Fi(result[i - 1], i - 1) ** (-1))
+            result.append(state[i] * self._F(result[i - 1], i - 1) ** (-1))
         return result
+
+    def Bar(self, x):
+        digits = mixed_radix_decompose(x, self.si, self.from_field)
+        new_digits = [self.LUT[d] for d in digits]
+        return mixed_radix_compose(new_digits, self.si, self.to_field)
+    
+    def Bar_inv(self, x):
+        digits = mixed_radix_decompose(x, self.si, self.from_field)
+        new_digits = [self.LUT_inv[d] for d in digits]
+        return mixed_radix_compose(new_digits, self.si, self.to_field)
 
     def Bars(self, state: list) -> list:
-        result = []
-        for el in state:
-            digits = mixed_radix_decompose(el, self.si, self.from_field)
-            digits = [self.LUT[d] for d in digits]
-            result.append(mixed_radix_compose(digits, self.si, self.to_field))
-        return result
+        return [self.Bar(x) for x in state]
 
     def Bars_inv(self, state: list) -> list:
-        result = []
-        for el in state:
-            digits = mixed_radix_decompose(el, self.si, self.from_field)
-            digits = [self.LUT_inv[d] for d in digits]
-            result.append(mixed_radix_compose(digits, self.si, self.to_field))
-        return result
+        return [self.Bar_inv(x) for x in state]
 
     # ---------------------------------------------------------------------------
     # Permutation

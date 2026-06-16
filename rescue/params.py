@@ -1,4 +1,4 @@
-from utils import vandermonde_mds_matrix, FieldElementSampler
+from utils import vandermonde_mds_matrix, XOFFieldElementSampler, map_to_field, invert_matrix
 from complexities import gb_comp
 from sage.all import GF, Integer, matrix, vector
 from math import ceil, floor, gcd, log
@@ -57,11 +57,11 @@ class RescueParams:
         self.g = g if g is not None else self.F.multiplicative_generator() # smallest primitive element
 
         M = M if M is not None else self._init_mds()
-        self.M = [[self.to_field(x) for x in row] for row in M]
-        self.M_inv = [list(row) for row in matrix(self.F, self.M).inverse()]
+        self.M = map_to_field(M, self.to_field)
+        self.M_inv = invert_matrix(self.M)
 
         self.rcons = rcons if rcons is not None else self._init_rcons()
-        self.rcons = [[self.to_field(x) for x in row] for row in self.rcons]
+        self.rcons = map_to_field(self.rcons, self.to_field)
 
     # ---------------------------------------------------------------------------
     # Small helpers
@@ -88,7 +88,7 @@ class RescueParams:
         seed = b"winteriscoming"
         num_blocks = 1
         while True:
-            rows = FieldElementSampler(seed, self.p, xof="shake_256", sampling="mod").grid(num_blocks * self.t + 2, self.t)
+            rows = XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_256", sampling="mod").grid(num_blocks * self.t + 2, self.t)
             for i in range(0, len(rows) - self.t - 1, self.t):
                 constants_matrix = rows[i:i + self.t]
                 if matrix(self.F, constants_matrix).is_invertible():

@@ -1,9 +1,9 @@
 from math import gcd
 
-from sage.all import GF, Integer, matrix
+from sage.all import GF, Integer
 
 from complexities import gb_comp
-from utils import circulant, is_mds, pht_matrix, dl_m33_52_matrix, dl_m46_83_matrix
+from utils import circulant, is_mds, pht_matrix, dl_m33_52_matrix, dl_m46_83_matrix, map_to_field, invert_matrix
 
 # Digits of pi, used to derive the round constants via an open butterfly.
 PI_0 = 1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679
@@ -92,11 +92,11 @@ class AnemoiParams:
 
         # Affine layer
         Mx = M if M is not None else self._init_mds()
-        self.Mx = [[self.to_field(x) for x in row] for row in Mx]
-        self.Mx_inv = [list(row) for row in matrix(self.F, self.Mx).inverse()]
+        self.Mx = map_to_field(Mx, self.to_field)
+        self.Mx_inv = invert_matrix(self.Mx)
 
         self.My = self._init_My_from_Mx()
-        self.My_inv = [list(row) for row in matrix(self.F, self.My).inverse()]
+        self.My_inv = invert_matrix(self.My)
 
         self.C, self.D = self._init_rcons() # C (x-lane) and D (y-lane)
 

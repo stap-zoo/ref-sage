@@ -1,6 +1,6 @@
-from sage.all import GF, Integer, Matrix
+from sage.all import GF, Integer
 
-from utils import FieldElementSampler, invert_LUT
+from utils import XOFFieldElementSampler, invert_LUT, map_to_field, invert_matrix
 
 class MonolithParams:
     def __init__(
@@ -52,11 +52,11 @@ class MonolithParams:
 
         # Affine layer
         M = M if M is not None else self._init_mds()
-        self.M = [[self.to_field(x) for x in row] for row in M]
-        self.M_inv = [list(row) for row in Matrix(self.F, self.M).inverse()]
+        self.M = map_to_field(M, self.to_field)
+        self.M_inv = invert_matrix(self.M)
 
         self.rcons = rcons if rcons is not None else self._init_rcons()
-        self.rcons = [[self.to_field(x) for x in row] for row in self.rcons]
+        self.rcons = map_to_field(self.rcons, self.to_field)
 
         # Hash modes
         self.d = d
@@ -91,7 +91,7 @@ class MonolithParams:
                 + bytes([self.t, self.R])
                 + (struct.pack('<I', self.p) if bits <= 32 else struct.pack('<Q', self.p))
                 + (bytes([8, 8, 8, 7])       if bits <= 32 else bytes([8] * 8)))
-        return FieldElementSampler(seed, self.p, xof="shake_128", sampling="naive").grid(self.R - 1, self.t)
+        return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_128", sampling="naive").grid(self.R - 1, self.t)
     
     def _init_rounds(self) -> int:
         # TODO implement

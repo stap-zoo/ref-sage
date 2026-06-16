@@ -1,7 +1,7 @@
-from sage.all import GF, Integer, matrix, legendre_symbol
+from sage.all import GF, Integer, legendre_symbol
 from math import gcd
 
-from utils import m4_to_block_circulant_matrix, circulant, FieldElementSampler
+from utils import m4_to_block_circulant_matrix, circulant, XOFFieldElementSampler, map_to_field, invert_matrix
 
 
 class GriffinParams:
@@ -56,16 +56,16 @@ class GriffinParams:
         # Non-linear layer
         self.alpha = alpha if alpha is not None else self._init_alpha()
         self.alpha_inv = alpha_inv if alpha_inv is not None else pow(alpha, -1, p - 1)
-        self.coeffs_G = [[self.to_field(a), self.to_field(b)] for a, b in coeffs_G]
+        self.coeffs_G = map_to_field(coeffs_G, self.to_field)
 
         # Affine layer
         M = M if M is not None else self._init_matrix()
-        self.M = [[self.to_field(x) for x in row] for row in M]
-        self.M_inv = [list(row) for row in matrix(self.F, self.M).inverse()]
+        self.M = map_to_field(M, self.to_field)
+        self.M_inv = invert_matrix(self.M)
 
         # Pad with a zero row so AffineLayer can uniformly index rcons[round_idx]
         # for round_idx in 0..R-1 (the final round has no round constants).
-        self.rcons = [[self.to_field(x) for x in row] for row in rcons] + [[self.F.zero()] * self.t]
+        self.rcons = map_to_field(rcons, self.to_field) + [[self.F.zero()] * self.t]
 
         # Hash modes
         self.r = r
@@ -97,7 +97,7 @@ class GriffinParams:
         # Initialize the sampler, seeded with "Griffin" followed by the field characteristic serialized as little-endian 64-bit limbs.
         n_bytes = ((self.p.bit_length() + 63) // 64) * 8
         seed = b"Griffin" + self.p.to_bytes(n_bytes, "little")
-        reader = FieldElementSampler(seed, self.p, xof="shake_128", sampling="bitmask")
+        reader = XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_128", sampling="bitmask")
 
         # Generate round constants. The last round has no round constants.
         rcons = [[reader.next() for _ in range(self.t)] for _ in range(self.R - 1)]

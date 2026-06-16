@@ -6,86 +6,71 @@ from math import ceil
 # Sample field elements
 # ---------------------------------------------------------------------------
 
-# Extendable-output functions usable as byte streams: each entry maps a name to a
-# constructor taking the seed and returning an object whose digest(n) yields the
-# first n bytes of the stream.
+# Byte-stream sources: each entry maps a name to a constructor taking the seed and returning an
+# object whose digest(n) yields the first n bytes of the stream. shake/blake3 are true XOFs
+# (unbounded); sha256 is a fixed 32-byte digest exposed through the same interface (bounded -- the
+# sampler raises if more than 32 bytes are drawn), used for Tip5's MDS column.
+
+class _SHA256:
+    """SHA-256 as a bounded (32-byte) byte source with the XOF digest(n) interface."""
+    def __init__(self, seed: bytes):
+        self._bytes = sha256(seed).digest()
+
+    def digest(self, n: int) -> bytes:
+        return self._bytes[:n]   # capped at 32 bytes; XOFFieldElementSampler raises if it needs more
 
 XOFS = {
     "shake_128": shake_128,
     "shake_256": shake_256,
     "blake3": blake3,
+    "sha256": _SHA256,
 }
 
 class FieldElementSampler:
-    """Stateful XOF reader, sampling field elements in [0, p) one at a time.
+    """Abstract base for deterministic field-element samplers in [0, p). A subclass supplies the
+    raw candidate value via _draw_candidate(); this base maps it to a field element according to
+    the sampling strategy and exposes next / next_nonzero / grid:
 
-    Cuts the byte stream of the seeded XOF into fixed-size little-endian chunks and maps each chunk to a field element according to the sampling strategy:
+    sampling="bitmask" : draw the field's serialized width and trim to its exact bit-length, reject (resample) if >= p.
+    sampling="naive"   : draw the field's serialized width but do NOT trim to the exact bit-length, reject if >= p
+                         (simpler, higher rejection rate than bitmask).
+    sampling="mod"     : draw a slightly wider value and reduce mod p (no rejection).
 
-    sampling="bitmask" : reads ceil(p.bit_length()/8) bytes, zeroes bits above p.bit_length() in the last byte, rejects (resamples) if >= p.
-                         Matches the Rust field_element_from_shake / ff::PrimeField::from_repr from
-                         https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo/-/blob/master/plain_impls/src/fields/utils.rs?ref_type=heads.
-                         Used in Reinforced Concrete and Griffin (with xof="shake_128").
-    sampling="naive"   : reads a fixed-width word (4 bytes if p fits in 32 bits, 8 bytes otherwise), rejects if >= p.
-                         Used in Monolith (with xof="shake_128").
-    sampling="mod"     : reads ceil(p.bit_length()/8)+1 bytes, reduces mod p (no rejection).
-                         Matches Rescue Prime / RPO's get_round_constants from 
-                         https://github.com/KULeuven-COSIC/Marvellous and https://github.com/ASDiscreteMathematics/rpo.
-                         Used in Rescue, Rescue Prime / RPO, and Arion (with xof="shake_256").
-
-    n_bytes overrides the strategy's chunk size, e.g. for Tip5's round constants (xof="blake3", sampling="mod"), 
-    which read t bytes per element instead of ceil(p.bit_length()/8)+1.
+    The concrete width/encoding of a "draw" is the subclass's business (XOF byte chunks vs LFSR
+    bit collection); only the reject-vs-reduce decision lives here. The strategy can be switched
+    mid-stream via set_sampling -- e.g. Poseidon draws round constants with "bitmask" then
+    switches to "mod" to draw the MDS matrix off the same sampler.
     """
 
-    def __init__(self, seed: bytes, p: int, xof: str = "shake_128", sampling: str = "bitmask", n_bytes: int = None):
-        if xof not in XOFS:
-            raise ValueError(f"Unknown XOF: {xof}. Use one of {sorted(XOFS)}.")
+    SAMPLINGS = ("bitmask", "naive", "mod")
+
+    def __init__(self, p: int):
         self.p = p
-        self._xof = XOFS[xof](seed)
 
-        bits = p.bit_length()
-        if sampling == "bitmask":
-            self.n_bytes = ceil(bits / 8)
-            mod = bits % 8
-            self.mask = ((1 << mod) - 1) if mod != 0 else 0xFF
-            self.reduce_mod = False
-        elif sampling == "naive":
-            self.n_bytes = 4 if bits <= 32 else 8
-            self.mask = 0xFF
-            self.reduce_mod = False
-        elif sampling == "mod":
-            self.n_bytes = ceil(bits / 8) + 1
-            self.mask = 0xFF
-            self.reduce_mod = True
-        else:
-            raise ValueError(f"Unknown sampling strategy: {sampling}. Use 'bitmask', 'naive', or 'mod'.")
+    def set_sampling(self, sampling: str) -> None:
+        """Set/switch the sampling strategy and recompute the derived draw parameters. Subclasses
+        set up their underlying stream first, then call this from __init__."""
+        if sampling not in self.SAMPLINGS:
+            raise ValueError(f"Unknown sampling strategy: {sampling}. Use one of {self.SAMPLINGS}.")
+        self.sampling = sampling
+        self.reduce_mod = (sampling == "mod")
+        self._configure_sampling()
 
-        if n_bytes is not None:
-            self.n_bytes = n_bytes
+    def _configure_sampling(self) -> None:
+        """Recompute the strategy-dependent draw width/mask (subclass-specific)."""
+        raise NotImplementedError
 
-        self._pos = 0
-        self._size = max(1024, self.n_bytes * 64)
-        self._buf = self._xof.digest(self._size)
-
-    def _ensure(self, n: int) -> None:
-        """Grow the buffered XOF output until at least n unread bytes are available.
-        An XOF's longer digest is an extension of its shorter one, so re-requesting
-        the doubled size extends the stream while keeping every previously read
-        position valid."""
-        while len(self._buf) - self._pos < n:
-            self._size *= 2
-            self._buf = self._xof.digest(self._size)
+    def _draw_candidate(self) -> int:
+        """One raw candidate integer from the underlying stream (subclass-specific width)."""
+        raise NotImplementedError
 
     def next(self) -> int:
         """Sample the next field element from the stream."""
         while True:
-            self._ensure(self.n_bytes)
-            raw = bytearray(self._buf[self._pos:self._pos + self.n_bytes])
-            self._pos += self.n_bytes
-            raw[-1] &= self.mask
-            val = int.from_bytes(raw, "little")
+            val = self._draw_candidate()
             if self.reduce_mod:
                 return val % self.p
-            if val < self.p: # rejection sampling
+            if val < self.p:    # rejection sampling
                 return val
 
     def next_nonzero(self) -> int:
@@ -98,6 +83,154 @@ class FieldElementSampler:
     def grid(self, num_rows: int, num_cols: int) -> list[list[int]]:
         """Sample a num_rows x num_cols grid of field elements."""
         return [[self.next() for _ in range(num_cols)] for _ in range(num_rows)]
+
+
+class XOFFieldElementSampler(FieldElementSampler):
+    """Field-element sampler reading a seeded XOF byte stream, cut into fixed-size little-endian
+    chunks (see FieldElementSampler for the sampling strategies):
+
+    sampling="bitmask" : reads ceil(p.bit_length()/8) bytes, zeroes bits above p.bit_length() in the last byte.
+                         Matches the Rust field_element_from_shake / ff::PrimeField::from_repr from
+                         https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo/-/blob/master/plain_impls/src/fields/utils.rs?ref_type=heads.
+                         Used in Reinforced Concrete and Griffin (with xof="shake_128").
+    sampling="naive"   : reads ceil(p.bit_length()/8) bytes like bitmask, but leaves the top byte unmasked,
+                         so it rejects whenever the value lands in [p, 256^n_bytes) -- the plain "read the field's
+                         byte width and reject" approach. Used in Monolith (with xof="shake_128"). A deliberately
+                         different read width (an efficiency choice of the primitive) is an explicit n_bytes override.
+    sampling="mod"     : reads ceil(p.bit_length()/8)+1 bytes. Matches Rescue Prime / RPO's get_round_constants from
+                         https://github.com/KULeuven-COSIC/Marvellous and https://github.com/ASDiscreteMathematics/rpo.
+                         Used in Rescue, Rescue Prime / RPO, and Arion (with xof="shake_256").
+
+    n_bytes overrides the strategy's chunk size, e.g. for Tip5's round constants (xof="blake3", sampling="mod"),
+    which read t bytes per element instead of ceil(p.bit_length()/8)+1.
+    """
+
+    def __init__(self, *, seed: bytes, p: int, sampling: str, xof: str = "shake_128", n_bytes: int = None):
+        super().__init__(p)
+        if xof not in XOFS:
+            raise ValueError(f"Unknown XOF: {xof}. Use one of {sorted(XOFS)}.")
+        self._xof = XOFS[xof](seed)
+        self._n_bytes_override = n_bytes
+        self.set_sampling(sampling)        # sets n_bytes / mask (+ reduce_mod)
+
+        self._pos = 0
+        self._size = max(1024, self.n_bytes * 64)
+        self._buf = self._xof.digest(self._size)
+
+    def _configure_sampling(self) -> None:
+        bits = self.p.bit_length()
+        if self.sampling == "bitmask":
+            self.n_bytes = ceil(bits / 8)
+            mod = bits % 8
+            self.mask = ((1 << mod) - 1) if mod != 0 else 0xFF
+        elif self.sampling == "naive":
+            self.n_bytes = ceil(bits / 8)
+            self.mask = 0xFF
+        else:  # "mod"
+            self.n_bytes = ceil(bits / 8) + 1
+            self.mask = 0xFF
+        if self._n_bytes_override is not None:
+            self.n_bytes = self._n_bytes_override
+
+    def _ensure(self, n: int) -> None:
+        """Grow the buffered XOF output until at least n unread bytes are available.
+        An XOF's longer digest is an extension of its shorter one, so re-requesting
+        the doubled size extends the stream while keeping every previously read
+        position valid. A bounded source (e.g. sha256) stops growing -- raise then."""
+        while len(self._buf) - self._pos < n:
+            self._size *= 2
+            grown = self._xof.digest(self._size)
+            if len(grown) == len(self._buf):
+                raise ValueError("byte source exhausted (bounded digest cannot provide more)")
+            self._buf = grown
+
+    def _draw_candidate(self) -> int:
+        self._ensure(self.n_bytes)
+        raw = bytearray(self._buf[self._pos:self._pos + self.n_bytes])
+        self._pos += self.n_bytes
+        raw[-1] &= self.mask
+        return int.from_bytes(raw, "little")
+
+
+class LFSRFieldElementSampler(FieldElementSampler):
+    """Field-element sampler reading an LFSR bit stream, used by Poseidon / Poseidon2 to derive
+    round constants (and, in the original spec, the MDS matrix) deterministically. The Grain LFSR
+    of Poseidon (Appendix E of https://eprint.iacr.org/2019/458) is the instance with taps
+    [0, 13, 23, 38, 51, 62] over an 80-bit state.
+
+    The LFSR has a `state_size`-bit register, seeded with `seed_bits`, and is warmed up by `warmup`
+    discarded steps (default 2*state_size -- two full passes through the register, i.e. 160 for the
+    80-bit Grain LFSR). Per draw, candidate bits are collected MSB-first and mapped to a field element
+    per the sampling strategy (see FieldElementSampler). `taps` are the feedback tap indices. The
+    seed-bit layout is primitive-specific (it encodes the instance parameters) and is built by the
+    caller -- see the Poseidon/Poseidon2 classes in hades/params.py. `shrink` selects the output-bit
+    extraction:
+
+      shrink=True  : self-shrinking generator -- read pairs (b0, b1) and keep b1 iff b0 == 1.
+                     Used by the original generate_parameters_grain.sage (hadeshash layout).
+      shrink=False : the raw clocked bit is used directly (khovratovich/poseidon-tools layout).
+    """
+
+    def __init__(self, *, seed_bits: list[int], p: int, taps: list[int], state_size: int,
+                 sampling: str, warmup: int = None, shrink: bool = False):
+        super().__init__(p)
+        if len(seed_bits) != state_size:
+            raise ValueError(f"seed_bits length {len(seed_bits)} does not match state_size {state_size}")
+        self.n = p.bit_length()
+        self.taps = taps
+        self.state_size = state_size
+        self._shrink = shrink
+        self._state = list(seed_bits)
+        for _ in range(warmup if warmup is not None else 2 * state_size):   # warm up
+            self._next_bit()
+        self.set_sampling(sampling)        # sets _cand_bits (+ reduce_mod)
+
+    def _configure_sampling(self) -> None:
+        # candidate width per sampling strategy (the bit analogue of the XOF byte widths)
+        self._cand_bits = (32 if self.n <= 32 else 64) if self.sampling == "naive" else self.n
+
+    @staticmethod
+    def to_bits(value: int, width: int) -> list[int]:
+        """Big-endian (MSB-first) bit decomposition of `value` into `width` bits.
+        Helper for callers assembling the seed."""
+        return [(value >> (width - 1 - i)) & 1 for i in range(width)]
+
+    def _next_bit(self) -> int:
+        s = self._state
+        new = 0
+        for i in self.taps:
+            new ^= s[i]
+        self._state = s[1:] + [new]
+        return new
+
+    def _next_output_bit(self) -> int:
+        """One output bit: self-shrinking (read pairs (b0, b1), keep b1 iff b0 == 1) when
+        shrink is set, otherwise the raw clocked bit."""
+        if not self._shrink:
+            return self._next_bit()
+        while True:
+            b0 = self._next_bit()
+            b1 = self._next_bit()
+            if b0 == 1:
+                return b1
+
+    def _draw_candidate(self) -> int:
+        val = 0
+        for _ in range(self._cand_bits):
+            val = (val << 1) | self._next_output_bit()
+        return val
+
+# ---------------------------------------------------------------------------
+# Field conversion
+# ---------------------------------------------------------------------------
+
+def map_to_field(x, to_field):
+    """Recursively map `to_field` over a nested list of ints / field elements, preserving
+    structure: lists are descended into, any non-list element is converted via `to_field`.
+    Covers the vector, matrix, and deeper (e.g. list-of-[a,b]-pairs) cases uniformly."""
+    if isinstance(x, list):
+        return [map_to_field(e, to_field) for e in x]
+    return to_field(x)
 
 # ---------------------------------------------------------------------------
 # Matrix utils
@@ -121,13 +254,13 @@ def circulant(row: list = None, *, col: list = None) -> list[list]:
     n = len(row)
     return [row[(n - i) % n:] + row[:(n - i) % n] for i in range(n)]
 
-def is_mds(M: list[list], field=None) -> bool:
-    """A matrix is MDS iff all its minors (of every order) are non-zero.
-    Accepts a list-of-lists; entries may be ints (then `field` must be given,
-    e.g. GF(p)) or Sage field elements (then `field` is inferred)."""
+def invert_matrix(M: list[list], field=None) -> list[list]:
+    """Invert a square matrix given as a list-of-rows and return the inverse in the same form.
+    Entries may be ints (then `field` must be given, e.g. GF(p)) or Sage field elements
+    (then `field` is inferred)."""
     from sage.all import matrix
     m = matrix(field, M) if field is not None else matrix(M)
-    return all(minor != 0 for k in range(1, m.nrows() + 1) for minor in m.minors(k))
+    return [list(row) for row in m.inverse()]
 
 def matvecmul(matrix: list[list], vec: list) -> list:
     """Matrix-vector product over any ring. Returns a new list."""
@@ -151,6 +284,14 @@ def replace_start(state: list, block: list) -> list:
     assert len(state) >= len(block)
     return list(block) + state[len(block):]
 
+def is_mds(M: list[list], field=None) -> bool:
+    """A matrix is MDS iff all its minors (of every order) are non-zero.
+    Accepts a list-of-lists; entries may be ints (then `field` must be given,
+    e.g. GF(p)) or Sage field elements (then `field` is inferred)."""
+    from sage.all import matrix
+    m = matrix(field, M) if field is not None else matrix(M)
+    return all(minor != 0 for k in range(1, m.nrows() + 1) for minor in m.minors(k))
+
 # ---------------------------------------------------------------------------
 # Mixed-radix utils
 # ---------------------------------------------------------------------------
@@ -168,7 +309,6 @@ def mixed_radix_compose(digits: list[int], si: list[int], to_field):
     for digit, s in zip(digits[1:], si[1:]):
         result = result * s + digit
     return to_field(result)
-
 
 # ---------------------------------------------------------------------------
 # Lookup table utils
@@ -320,19 +460,79 @@ def vandermonde_mds_matrix(p: int, t: int, generator: int, transpose: bool = Fal
 
 
 def simple_circulant_matrix(t: int) -> list[list[int]]:
-    """MDS guaranteed only for t in {2, 3, 4} with p > 130. 
+    """MDS guaranteed only for t in {2, 3, 4} with p > 130.
     See https://arxiv.org/pdf/2303.04639 (Arion paper), Remark 4."""
     return circulant(row=list(range(1, t + 1)))
 
-def tip5_mds_matrix(t: int = 16) -> list[list[int]]:
-    """Tip5's 16x16 circulant MDS matrix. First column corresponds to 16-bit little-endian
-    chunks of SHA-256("Tip5"). Entries are 16-bit by construction, enabling delayed modular reduction.
-    Reused verbatim by Tip4 (t = 16) and Monolith-31 (t = 16);
-    MDS over both Goldilocks 2^64 - 2^32 + 1 and Mersenne 2^31 - 1.
-    For reduced state sizes t < 16 (e.g. Tip4' with t = 12), the circulant is built
-    from the first t entries of the column, as in the sage reference implementation."""
+def ones_plus_diag_matrix(diag: list[int]) -> list[list[int]]:
+    """The t x t matrix J + diag(diag): all-ones with diag[i] added on the diagonal.
+    Poseidon2's internal matrix M_I = J + diag(MAT_DIAG_M_1)."""
+    t = len(diag)
+    M = [[1] * t for _ in range(t)]
+    for i in range(t):
+        M[i][i] = M[i][i] + diag[i]
+    return M
+
+def cauchy_matrix(xs: list[int], ys: list[int], p: int) -> list[list[int]]:
+    """Cauchy matrix M[i][j] = 1 / (xs[i] + ys[j]) over GF(p). Raises ZeroDivisionError if any
+    xs[i] + ys[j] is congruent to 0 mod p (the modular inverse is undefined, i.e. these xs, ys
+    do not form a valid Cauchy matrix)."""
+    M = []
+    for x in xs:
+        row = []
+        for y in ys:
+            denom = (x + y) % p
+            if denom == 0:
+                raise ZeroDivisionError("Cauchy denominator xs[i] + ys[j] = 0 mod p")
+            row.append(pow(denom, -1, p))
+        M.append(row)
+    return M
+
+def cauchy_mds_matrix(p: int, t: int, *, xs: list[int] = None, ys: list[int] = None,
+                      sampler: "FieldElementSampler" = None) -> list[list[int]]:
+    """t x t Cauchy MDS matrix M[i][j] = 1 / (xs[i] + ys[j]) over GF(p). The xs, ys come from
+    one of three sources:
+
+      - `sampler` given: draw the 2t elements as a 2-row grid (xs, ys = sampler.grid(2, t)),
+        resampling the whole batch until all 2t values are distinct and the Cauchy matrix is
+        defined. This is the reference generate_parameters_grain.sage create_mds_p construction;
+        the sampler's current strategy applies (Poseidon switches it to "mod" beforehand), and any
+        FieldElementSampler works.
+      - `xs` and `ys` given: used directly.
+      - neither: the fixed indices xs = 0..t-1, ys = -t..-(2t-1), i.e. M[i][j] = 1 / (i - t - j),
+        matching github.com/khovratovich/poseidon-tools (the "ethereum" Poseidon strategy; needs p > 2t).
+    """
+    if sampler is not None:
+        while True:
+            xs, ys = sampler.grid(2, t)
+            if len(set(xs + ys)) != 2 * t:           # values must be distinct
+                continue
+            try:
+                return cauchy_matrix(xs, ys, p)
+            except ZeroDivisionError:                # some xs[i] + ys[j] = 0; resample the batch
+                continue
+    if xs is None or ys is None:
+        xs, ys = list(range(t)), [-t - j for j in range(t)]
+    return cauchy_matrix(xs, ys, p)
+
+def tip5_mds_matrix(p: int, t: int = 16) -> list[list[int]]:
+    """Tip5's 16x16 circulant MDS matrix. The first column is the 16 little-endian 16-bit words of
+    SHA-256("Tip5") -- the 32-byte digest split into 16 two-byte words (both fixed by the spec),
+    drawn as a grid (n_bytes=2) from the XOF sampler. Entries are 16-bit by design (deliberately
+    narrower than the field), enabling delayed modular reduction. `p` is only the sampler's field;
+    since every entry is < 2^16 < p no rejection occurs, so the matrix is identical over Goldilocks
+    2^64 - 2^32 + 1 and Mersenne 2^31 - 1 (reused verbatim by Tip4 with t = 16 and Monolith-31 with
+    t = 16). For reduced state sizes t < 16 (e.g. Tip4' with t = 12) the circulant is built from the
+    first t entries of the column."""
     if not 1 <= t <= 16:
         raise ValueError(f"t must be in 1..16. Got {t}")
-    digest = sha256(b"Tip5").digest()
-    first_column = [int.from_bytes(digest[2 * i: 2 * i + 2], "little") for i in range(16)]
-    return circulant(col=first_column[:t])
+    column = XOFFieldElementSampler(seed=b"Tip5", p=p, xof="sha256", sampling="naive", n_bytes=2).grid(1, 16)[0]
+    return circulant(col=column[:t])
+
+def rpo_mds_matrix(t: int) -> list[list[int]]:
+    if t == 12:
+        return circulant(row=[7, 23, 8, 26, 13, 10, 9, 7, 6, 22, 21, 8])
+    elif t == 16:
+        return circulant(row=[256, 2, 1073741824, 2048, 16777216, 128, 8, 16, 524288, 4194304, 1, 268435456, 1, 1024, 2, 8192])
+    else:
+        raise ValueError(f"t must be in {{12,16}}. Got {t}")

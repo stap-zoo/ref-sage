@@ -1,7 +1,7 @@
-from sage.all import GF, Integer, matrix, legendre_symbol
+from sage.all import GF, Integer, legendre_symbol
 from math import gcd
 
-from utils import simple_circulant_matrix, FieldElementSampler
+from utils import simple_circulant_matrix, XOFFieldElementSampler, map_to_field, invert_matrix
 
 
 class ArionParams:
@@ -18,7 +18,6 @@ class ArionParams:
         coeffs_h:    list[list[int]] = None,
         rcons:       list[list[int]] = None,
         M:           list[list[int]] = None,
-        matrix_type: int = 1,
         r:           int = None,
         c:           int = None,
         d:           int = None,
@@ -38,7 +37,6 @@ class ArionParams:
         coeffs_h      : R*(t-1) constants for the linear maps h_i; generated via _init_constants if not provided
         rcons         : Rxt affine round constants; generated via _init_constants if not provided
         M             : MDS matrix (txt); generated via _init_mds(matrix_type) if not provided
-        matrix_type   : 1 = circulant(1..t), 2 = Arion.sage's alternative matrix; only used if M is not given
         r             : rate (number of outer state elements absorbed/squeezed per sponge step)
         c             : capacity (number of inner state elements)
         d             : digest size (number of output elements)
@@ -64,15 +62,13 @@ class ArionParams:
         self.alpha2 = alpha2 if alpha2 is not None else self._init_alpha2()
         self.alpha1_inv = alpha1_inv if alpha1_inv is not None else pow(self.alpha1, -1, p - 1)
         self.alpha2_inv = alpha2_inv if alpha2_inv is not None else pow(self.alpha2, -1, p - 1)
-        self.coeffs_g = [[[self.to_field(a), self.to_field(b)] for a, b in round_g] for round_g in coeffs_g]
-        self.coeffs_h = [[self.to_field(c) for c in round_h] for round_h in coeffs_h]
+        self.coeffs_g = map_to_field(coeffs_g, self.to_field)
+        self.coeffs_h = map_to_field(coeffs_h, self.to_field)
 
         # Affine layer
-        M = M if M is not None else self._init_mds(matrix_type)
-        self.M = [[self.to_field(x) for x in row] for row in M]
-        self.M_inv = [list(row) for row in matrix(self.F, self.M).inverse()]
-
-        self.rcons = [[self.to_field(x) for x in row] for row in rcons]
+        self.M = map_to_field(M if M is not None else self._init_mds(), self.to_field)
+        self.M_inv = invert_matrix(self.M)
+        self.rcons = map_to_field(rcons, self.to_field)
 
         # Hash modes
         self.r = r
@@ -106,16 +102,8 @@ class ArionParams:
                 return alpha2
         raise ValueError("no valid alpha2 found in [257, 161, 129, 125, 123, 121]")
 
-    def _init_mds(self, matrix_type: int) -> list[list[int]]:
-        if matrix_type == 1:
-            return simple_circulant_matrix(self.t)
-        elif matrix_type == 2: # TODO check this type, it only appears in reference implementation
-            M = [list(range(1, self.t + 1)) for _ in range(self.t)]
-            for i in range(1, self.t):
-                M[i][i - 1] += 1
-                M[i][i] -= 1
-            return M
-        raise ValueError(f"Unknown matrix_type: {matrix_type}")
+    def _init_mds(self) -> list[list[int]]:
+        return simple_circulant_matrix(self.t)
 
     def _init_constants(self):
         # Deterministic constant generation via SHAKE256, so coeffs_g/coeffs_h/rcons
@@ -123,14 +111,14 @@ class ArionParams:
         # used by the reference implementation in https://github.com/sca-research/Arion.
         seed = f"Arion({self.p},{self.t},{self.R})".encode("ascii")
 
-        rcons = FieldElementSampler(seed + b"aff", self.p, xof="shake_256", sampling="mod").grid(self.R, self.t)
-        coeffs_h = FieldElementSampler(seed + b"h", self.p, xof="shake_256", sampling="mod").grid(self.R, self.t - 1)
+        rcons = XOFFieldElementSampler(seed=seed + b"aff", p=self.p, xof="shake_256", sampling="mod").grid(self.R, self.t)
+        coeffs_h = XOFFieldElementSampler(seed=seed + b"h", p=self.p, xof="shake_256", sampling="mod").grid(self.R, self.t - 1)
 
         # coeffs_g: pairs [a, b] with legendre_symbol(a^2 - 4*b, p) == -1, rejection-sampled
         # from a candidate pool drawn from the same SHAKE stream. Sampled flat (round-major)
         # since the rejection breaks the row alignment of the stream, then reshaped.
         n = self.R * (self.t - 1)
-        candidates = FieldElementSampler(seed + b"g", self.p, xof="shake_256", sampling="mod").grid(4 * n, 2)
+        candidates = XOFFieldElementSampler(seed=seed + b"g", p=self.p, xof="shake_256", sampling="mod").grid(4 * n, 2)
         coeffs_g = []
         for a, b in candidates:
             if legendre_symbol(a**2 - 4 * b, self.p) == -1:

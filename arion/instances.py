@@ -11,7 +11,6 @@ ARION_BLS12_T3 = ArionParams(
     R=6,
     alpha1=5,
     alpha2=257,
-    matrix_type=1,
     r=2,
     c=1,
     d=2,

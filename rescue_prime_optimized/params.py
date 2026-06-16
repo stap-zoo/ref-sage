@@ -1,6 +1,7 @@
 from math import ceil
 
 from rescue_prime.params import RescuePrimeParams
+from utils import rpo_mds_matrix
 
 
 class RescuePrimeOptimizedParams(RescuePrimeParams):
@@ -16,4 +17,4 @@ class RescuePrimeOptimizedParams(RescuePrimeParams):
         return ceil(1.5 * max(5, self._l1())) - 1
 
     def _init_mds(self) -> list[list[int]]:
-        raise NotImplementedError("RPO's MDS matrix is a fixed circulant matrix from the spec; pass M=circulant([...]) explicitly.")
+        return rpo_mds_matrix(self.t)
