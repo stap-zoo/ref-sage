@@ -1,7 +1,7 @@
 import pytest
 
-from rescue_prime_optimized.hash import RescuePrimeOptimized
-from rescue_prime_optimized.instances import (
+from marvellous.hash import RescuePrimeOptimized
+from marvellous.instances import (
     RPO_GOLDILOCKS_T12,
     RPO_GOLDILOCKS_T16,
 )
@@ -13,7 +13,7 @@ INSTANCES = [
 
 # ---------------------------------------------------------------------------
 # Known-answer test vectors (from the Sage reference implementation)
-# https://github.com/ASDiscreteMathematics/rpo/blob/master/reference_implementation/rescue_prime_optimized.sage
+# https://github.com/ASDiscreteMathematics/rpo/blob/master/reference_implementation/marvellous.sage
 # (input = [0..i-1]) -> output, for i = 1..8
 # ---------------------------------------------------------------------------
 

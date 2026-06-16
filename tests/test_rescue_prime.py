@@ -1,13 +1,16 @@
 import pytest
 
-from rescue_prime.hash import RescuePrime
-from rescue_prime.instances import (
+from marvellous.hash import RescuePrime
+from marvellous.instances import (
     RESCUE_PRIME_BLS12_T3,
     RESCUE_PRIME_BN254_T3,
     RESCUE_PRIME_ST_T3,
     RESCUE_PRIME_GOLDILOCKS_T8,
     RESCUE_PRIME_GOLDILOCKS_T12,
 )
+
+from utils import vandermonde_mds_matrix, XOFFieldElementSampler
+from fields import GOLDILOCKS
 
 INSTANCES = [
     ("BLS12_T3", RESCUE_PRIME_BLS12_T3),
@@ -19,7 +22,7 @@ INSTANCES = [
 
 # ---------------------------------------------------------------------------
 # Known-answer test vectors (from the Sage reference implementation)
-# https://github.com/KULeuven-COSIC/Marvellous/blob/master/rescue_prime.sage
+# https://github.com/KULeuven-COSIC/Marvellous/blob/master/marvellous.sage
 # ---------------------------------------------------------------------------
 
 KATS = {
@@ -142,3 +145,21 @@ def test_sponge_output_size(name, params):
     rp = RescuePrime(params)
     data = [rp.F.random_element() for _ in range(rp.r * 2)]
     assert len(rp.hash_sponge(data)) == rp.r
+
+# ---------------------------------------------------------------------------
+# Parameter generation
+# ---------------------------------------------------------------------------
+
+def test_vandermonde_mds_matrix_goldilocks_rescue_prime():
+    M = vandermonde_mds_matrix(GOLDILOCKS.p, 8, GOLDILOCKS.generator, transpose=True)
+    expected = [[RESCUE_PRIME_GOLDILOCKS_T8.from_field(x) for x in row] for row in RESCUE_PRIME_GOLDILOCKS_T8.M]
+    assert M == expected
+
+
+def test_field_element_sampler_bls12_rescue_prime():
+    params = RESCUE_PRIME_BLS12_T3
+    p = params.p
+    seed = f"Rescue-XLIX({p},{params.t},{params.c},{params.kappa})".encode("ascii")
+    rc = XOFFieldElementSampler(seed=seed, p=p, xof="shake_256", sampling="mod").grid(2 * params.R, params.t)
+    assert len(rc) == 2 * params.R
+    assert rc == [[params.from_field(x) for x in row] for row in params.rcons]

@@ -1,13 +1,13 @@
 import pytest
 
-from rescue.hash import Rescue
-from rescue.instances import (
+from marvellous.hash import Rescue
+from marvellous.instances import (
     RESCUE_BLS12_T3,
     RESCUE_BN254_T3,
     RESCUE_ST_T3,
     RESCUE_GOLDILOCKS_T12,
 )
-from rescue_prime.instances import RESCUE_PRIME_BLS12_T3, RESCUE_PRIME_GOLDILOCKS_T8
+
 from utils import vandermonde_mds_matrix, XOFFieldElementSampler
 from fields import BLS12_381_SCALAR, GOLDILOCKS
 
@@ -173,25 +173,10 @@ def test_sponge_output_size(name, params):
 
 
 # ---------------------------------------------------------------------------
-# Rescue / Rescue Prime / RPO parameter generation
+# Parameter generation
 # ---------------------------------------------------------------------------
 
 def test_vandermonde_mds_matrix_bls12_rescue():
     M = vandermonde_mds_matrix(BLS12_381_SCALAR.p, 3, BLS12_381_SCALAR.generator, transpose=False)
     expected = [[RESCUE_BLS12_T3.from_field(x) for x in row] for row in RESCUE_BLS12_T3.M]
     assert M == expected
-
-
-def test_vandermonde_mds_matrix_goldilocks_rescue_prime():
-    M = vandermonde_mds_matrix(GOLDILOCKS.p, 8, GOLDILOCKS.generator, transpose=True)
-    expected = [[RESCUE_PRIME_GOLDILOCKS_T8.from_field(x) for x in row] for row in RESCUE_PRIME_GOLDILOCKS_T8.M]
-    assert M == expected
-
-
-def test_field_element_sampler_bls12_rescue_prime():
-    params = RESCUE_PRIME_BLS12_T3
-    p = params.p
-    seed = f"Rescue-XLIX({p},{params.t},{params.c},{params.kappa})".encode("ascii")
-    rc = XOFFieldElementSampler(seed=seed, p=p, xof="shake_256", sampling="mod").grid(2 * params.R, params.t)
-    assert len(rc) == 2 * params.R
-    assert rc == [[params.from_field(x) for x in row] for row in params.rcons]

@@ -1,8 +1,11 @@
-from utils import vandermonde_mds_matrix, XOFFieldElementSampler, map_to_field, invert_matrix
+from utils import vandermonde_mds_matrix, rpo_mds_matrix, XOFFieldElementSampler, map_to_field, invert_matrix
 from complexities import gb_comp
 from sage.all import GF, Integer, matrix, vector
 from math import ceil, floor, gcd, log
 
+# ---------------------------------------------------------------------------
+# Rescue
+# ---------------------------------------------------------------------------
 
 class RescueParams:
     def __init__(
@@ -135,3 +138,61 @@ class RescueParams:
     def _init_rounds(self) -> int:
         """Round number derivation, including 100% security margin"""
         return 2 * ceil(max(5, self._l0(), self._l1()))
+
+# ---------------------------------------------------------------------------
+# Rescue Prime
+# ---------------------------------------------------------------------------
+
+class RescuePrimeParams(RescueParams):
+    """Same parameters as Rescue, with some simplifications:
+        - round constants: instead of deriving constants through the block cipher's key schedule with
+        the zero key, constants are generated directly by expanding a seed string with SHAKE-256
+        - security margin: reduced from 100% to 50%
+    """
+    LABEL = "Rescue-XLIX"
+    
+    def _l1(self) -> int:
+        """Instance-specific number of rounds that can be attacked by a Gröbner basis attack"""
+        nvar = lambda r : self.t * (r-1) + self.d # number of variables/equations
+        dcon = lambda r : floor(0.5 * (self.alpha - 1) * self.t * (r - 1) + 2) # extrapolation for observed solving degree
+        R = 1
+        while gb_comp(dreg=dcon(R), nv=nvar(R), w=2) < self.kappa:
+            R += 1
+        return R
+
+    def _init_rounds(self) -> int:
+        """Round number derivation, including 50% security margin"""
+        # Rescue Prime: 50% security margin over the Groebner-basis bound.
+        return ceil(1.5 * max(5, self._l1()))
+
+    def _init_mds(self) -> list[list[int]]:
+        return vandermonde_mds_matrix(self.p, self.t, self.g, transpose=True)
+
+    def _init_rcons(self) -> list[list[int]]:
+        seed = f"{self.LABEL}({self.p},{self.t},{self.c},{self.kappa})".encode("ascii")
+        return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_256", sampling="mod").grid(2 * self.R, self.t)
+
+# ---------------------------------------------------------------------------
+# Rescue Prime Optimized (RPO)
+# ---------------------------------------------------------------------------
+
+class RescuePrimeOptimizedParams(RescuePrimeParams):
+    """Same parameters as RescuePrime, with some adaptations:
+        - matrix: Circulant MDS matrix instead of the Vandermonde-derived one, chosen so matrix-vector products 
+        can be computed fast via Karatsuba or NTT-based polynomial multiplication (the field is NTT-friendly)
+        - security margin: similar to RescuePrime, but reduced by one round
+    """
+    LABEL = "RPO"
+
+    def _init_rounds(self) -> int:
+        # RPO paper states that 1 round less compared to RP is fine for proposed instance
+        return ceil(1.5 * max(5, self._l1())) - 1
+
+    def _init_mds(self) -> list[list[int]]:
+        return rpo_mds_matrix(self.t)
+
+# ---------------------------------------------------------------------------
+# XHASH
+# ---------------------------------------------------------------------------
+
+# TODO
