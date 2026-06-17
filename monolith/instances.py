@@ -1,3 +1,12 @@
+# instances.py
+# ---------------------------------------------------------------------------
+# Concrete, named parameter sets for Monolith.
+#
+# Each entry is a ready-to-use MonolithParams instance pinned to a specific
+# field from fields.py, so every consumer agrees on the exact same parameters.
+# Naming convention: MONOLITH_<FIELD>_<VARIANT>.
+# ---------------------------------------------------------------------------
+
 from fields import MERSENNE31, GOLDILOCKS
 from utils import circulant
 from monolith.params import MonolithParams, compute_lut_8, compute_lut_7

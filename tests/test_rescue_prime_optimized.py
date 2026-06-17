@@ -1,3 +1,15 @@
+# test_rescue_prime_optimized.py
+# ---------------------------------------------------------------------------
+# Test suite for Rescue Prime Optimized (RPO), parametrized over the named instances.
+#
+# Groups:
+#   4.1 KATs         -- fixed input/output vectors (sponge; currently disabled, see note)
+#   4.2 Roundtrip    -- permutation_inv undoes permutation (and per-layer)
+#   4.3 Consistency  -- determinism, distinct inputs -> distinct outputs, sizes
+#   4.4 Algebraic    -- (TODO)
+#   4.5 Misc         -- validation/errors
+# ---------------------------------------------------------------------------
+
 import pytest
 
 from marvellous.hash import RescuePrimeOptimized
@@ -12,7 +24,7 @@ INSTANCES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Known-answer test vectors (from the Sage reference implementation)
+# 4.1 Known-answer test vectors (from the Sage reference implementation)
 # https://github.com/ASDiscreteMathematics/rpo/blob/master/reference_implementation/marvellous.sage
 # (input = [0..i-1]) -> output, for i = 1..8
 # ---------------------------------------------------------------------------
@@ -46,50 +58,76 @@ RPO_T16_KATS = [
 # reproduce these vectors.
 # @pytest.mark.parametrize("input_seq,expected", RPO_T12_KATS)
 # def test_rpo_t12_kat(input_seq, expected):
-#     rpo = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
-#     inp = [rpo.to_field(x) for x in input_seq]
-#     out = rpo.hash_sponge(inp)
-#     assert [rpo.from_field(x) for x in out] == expected
+#     prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
+#     inp = [prim.to_field(x) for x in input_seq]
+#     out = prim.hash_sponge(inp)
+#     assert [prim.from_field(x) for x in out] == expected
 
 
 # @pytest.mark.parametrize("input_seq,expected", RPO_T16_KATS)
 # def test_rpo_t16_kat(input_seq, expected):
-#     rpo = RescuePrimeOptimized(RPO_GOLDILOCKS_T16)
-#     inp = [rpo.to_field(x) for x in input_seq]
-#     out = rpo.hash_sponge(inp)
-#     assert [rpo.from_field(x) for x in out] == expected
+#     prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T16)
+#     inp = [prim.to_field(x) for x in input_seq]
+#     out = prim.hash_sponge(inp)
+#     assert [prim.from_field(x) for x in out] == expected
 
 
 # ---------------------------------------------------------------------------
-# Consistency tests
+# 4.2 Roundtrip (invertibility)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_permutation_roundtrip(name, params):
+    prim = RescuePrimeOptimized(params)
+    inp = [prim.F.random_element() for _ in range(prim.t)]
+    assert prim.permutation_inv(prim.permutation(inp)) == inp
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_layer_roundtrip(name, params):
+    # Each component layer must be undone by its _inv partneprim.
+    prim = RescuePrimeOptimized(params)
+    inp = [prim.F.random_element() for _ in range(prim.t)]
+    for r in range(2 * prim.R):
+        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
+        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
+        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
+    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
+    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+
+
+# ---------------------------------------------------------------------------
+# 4.3 Consistency
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_digest_size(name, params):
-    rpo = RescuePrimeOptimized(params)
-    out = rpo.hash_sponge([rpo.to_field(0)])
-    assert len(out) == rpo.r // 2 == rpo.d
+    prim = RescuePrimeOptimized(params)
+    out = prim.hash_sponge([prim.to_field(0)])
+    assert len(out) == prim.r // 2 == prim.d
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_deterministic(name, params):
-    rpo = RescuePrimeOptimized(params)
-    inp = [rpo.F.random_element() for _ in range(rpo.t)]
-    assert rpo.permutation(inp) == rpo.permutation(inp)
+    prim = RescuePrimeOptimized(params)
+    inp = [prim.F.random_element() for _ in range(prim.t)]
+    assert prim.permutation(inp) == prim.permutation(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_distinct_inputs(name, params):
-    rpo = RescuePrimeOptimized(params)
-    inp1 = [rpo.F.random_element() for _ in range(rpo.t)]
-    inp2 = [rpo.F.random_element() for _ in range(rpo.t)]
+    prim = RescuePrimeOptimized(params)
+    inp1 = [prim.F.random_element() for _ in range(prim.t)]
+    inp2 = [prim.F.random_element() for _ in range(prim.t)]
     while inp1 == inp2:
-        inp2 = [rpo.F.random_element() for _ in range(rpo.t)]
-    assert rpo.permutation(inp1) != rpo.permutation(inp2)
+        inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    assert prim.permutation(inp1) != prim.permutation(inp2)
 
 
-@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
-def test_permutation_roundtrip(name, params):
-    rpo = RescuePrimeOptimized(params)
-    inp = [rpo.F.random_element() for _ in range(rpo.t)]
-    assert rpo.permutation_inv(rpo.permutation(inp)) == inp
+# ---------------------------------------------------------------------------
+# 4.5 Misc: validation
+# ---------------------------------------------------------------------------
+
+def test_invalid_state_size():
+    prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
+    with pytest.raises(ValueError):
+        prim.permutation([prim.F.zero()] * (prim.t + 1))

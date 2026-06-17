@@ -1,3 +1,12 @@
+# instances.py
+# ---------------------------------------------------------------------------
+# Concrete, named parameter sets for Arion.
+#
+# Each entry is a ready-to-use ArionParams instance pinned to a specific field
+# from fields.py, so every consumer agrees on the exact same parameters.
+# Naming convention: ARION_<FIELD>_<VARIANT>.
+# ---------------------------------------------------------------------------
+
 from fields import BLS12_381_SCALAR
 from arion.params import ArionParams
 

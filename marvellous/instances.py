@@ -1,3 +1,14 @@
+# instances.py
+# ---------------------------------------------------------------------------
+# Concrete, named parameter sets for the Marvellous family (Rescue, Rescue
+# Prime, Rescue Prime Optimized).
+#
+# Each entry is a ready-to-use params instance pinned to a specific field from
+# fields.py, so every consumer agrees on the exact same parameters. Naming
+# convention: RESCUE_<FIELD>_<VARIANT> / RESCUE_PRIME_<FIELD>_<VARIANT> /
+# RPO_<FIELD>_<VARIANT>. The sponge rate is r = t - c.
+# ---------------------------------------------------------------------------
+
 from fields import BLS12_381_SCALAR, BN254_SCALAR, ST, GOLDILOCKS, STARKWARE, ED25519_SCALAR, ED448_SCALAR
 from marvellous.params import RescueParams, RescuePrimeParams, RescuePrimeOptimizedParams
 
@@ -13,6 +24,7 @@ RESCUE_BLS12_T3 = RescueParams(
     alpha=BLS12_381_SCALAR.alpha,
     alpha_inv=BLS12_381_SCALAR.alpha_inv,
     kappa=128,
+    r=2,
     c=1,
     g=BLS12_381_SCALAR.generator,
     d=2,
@@ -24,6 +36,7 @@ RESCUE_BN254_T3 = RescueParams(
     alpha=BN254_SCALAR.alpha,
     alpha_inv=BN254_SCALAR.alpha_inv,
     kappa=128,
+    r=2,
     c=1,
     g=BN254_SCALAR.generator,
     d=2,
@@ -35,6 +48,7 @@ RESCUE_ST_T3 = RescueParams(
     alpha=ST.alpha,
     alpha_inv=ST.alpha_inv,
     kappa=128,
+    r=2,
     c=1,
     g=ST.generator,
     d=2,
@@ -48,6 +62,7 @@ RESCUE_GOLDILOCKS_T12 = RescueParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     kappa=128,
+    r=11,
     c=1,
     g=GOLDILOCKS.generator,
     d=11,
@@ -61,6 +76,7 @@ RESCUE_STARKWARE_T12 = RescueParams(
     alpha=STARKWARE.alpha,
     alpha_inv=STARKWARE.alpha_inv,
     kappa=122,
+    r=8,
     c=4,
     R=10,
     g=STARKWARE.generator,
@@ -75,6 +91,7 @@ RESCUE_ED25519_T6 = RescueParams(
     alpha=ED25519_SCALAR.alpha,
     alpha_inv=ED25519_SCALAR.alpha_inv,
     kappa=128,
+    r=5,
     c=1,
     g=ED25519_SCALAR.generator,
     d=5,
@@ -88,6 +105,7 @@ RESCUE_ED448_T10 = RescueParams(
     alpha=ED448_SCALAR.alpha,
     alpha_inv=ED448_SCALAR.alpha_inv,
     kappa=224,
+    r=8,
     c=2,
     R=10,
     g=ED448_SCALAR.generator,
@@ -106,6 +124,7 @@ RESCUE_PRIME_BLS12_T3 = RescuePrimeParams(
     alpha=BLS12_381_SCALAR.alpha,
     alpha_inv=BLS12_381_SCALAR.alpha_inv,
     kappa=128,
+    r=2,
     c=1,
     g=BLS12_381_SCALAR.generator,
     d=2,
@@ -117,6 +136,7 @@ RESCUE_PRIME_BN254_T3 = RescuePrimeParams(
     alpha=BN254_SCALAR.alpha,
     alpha_inv=BN254_SCALAR.alpha_inv,
     kappa=128,
+    r=2,
     c=1,
     g=BN254_SCALAR.generator,
     d=2,
@@ -128,6 +148,7 @@ RESCUE_PRIME_ST_T3 = RescuePrimeParams(
     alpha=ST.alpha,
     alpha_inv=ST.alpha_inv,
     kappa=128,
+    r=2,
     c=1,
     g=ST.generator,
     d=2,
@@ -141,6 +162,7 @@ RESCUE_PRIME_GOLDILOCKS_T8 = RescuePrimeParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     kappa=128,
+    r=4,
     c=4,
     g=GOLDILOCKS.generator,
     d=4,
@@ -152,6 +174,7 @@ RESCUE_PRIME_GOLDILOCKS_T12 = RescuePrimeParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     kappa=128,
+    r=8,
     c=4,
     g=GOLDILOCKS.generator,
     d=8,
@@ -167,6 +190,7 @@ RPO_GOLDILOCKS_T12 = RescuePrimeOptimizedParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     kappa=128,
+    r=8,
     c=4,
     R=7,
     d=4,
@@ -178,6 +202,7 @@ RPO_GOLDILOCKS_T16 = RescuePrimeOptimizedParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     kappa=160,
+    r=10,
     c=6,
     R=7,
     d=5,

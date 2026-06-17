@@ -1,6 +1,29 @@
 from utils import add_to_start, replace_start
 
 # ---------------------------------------------------------------------------
+# Rate / capacity / digest derivation
+# ---------------------------------------------------------------------------
+
+def derive_rate_capacity_digest(kappa: int, t: int, r: int = None, c: int = None, d: int = None) -> tuple[int, int, int]:
+    """Resolve the sponge/compression parameters (rate r, capacity c, digest size d) for a state of
+    size t at security level kappa. The derivation of any omitted value from kappa, t (and the values
+    that ARE given) is the same sponge/compression security relation for every primitive, so it lives
+    here once rather than in each params class.
+
+    If all three are provided they are returned unchanged (and the t == r + c sponge invariant is
+    checked); if any is omitted, it must be derived -- which is not yet implemented.
+    """
+    if r is not None and c is not None and d is not None:
+        if r + c != t:
+            raise ValueError(f"sponge invariant violated: r + c = {r + c} != t = {t}")
+        return r, c, d
+    # TODO: derive the missing rate/capacity/digest from kappa, t (and any provided r/c/d) via the
+    # sponge/compression security bound (capacity ~ 2*kappa bits, rate r = t - c, digest d from kappa).
+    raise NotImplementedError(
+        "automatic rate/capacity/digest derivation not implemented; pass r, c, d explicitly"
+    )
+
+# ---------------------------------------------------------------------------
 # Compression modes
 # ---------------------------------------------------------------------------
 

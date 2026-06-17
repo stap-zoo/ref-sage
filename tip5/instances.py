@@ -1,6 +1,15 @@
+# instances.py
+# ---------------------------------------------------------------------------
+# Concrete, named parameter sets for Tip5 and its TIP4 / TIP4' variants.
+#
+# Each entry is a ready-to-use Tip5Params instance pinned to the Goldilocks
+# field from fields.py, so every consumer agrees on the exact same parameters.
+# TIP5/TIP4/TIP4' are the spec-proper instance names (single field, Goldilocks).
+# ---------------------------------------------------------------------------
+
 from fields import GOLDILOCKS
 from utils import circulant
-from tip5.params import Tip5Params
+from tip5.params import Tip5Params, Tip4Params, Tip4PrimeParams
 
 # ---------------------------------------------------------------------------
 # Lookup table (hardcoded; verified by test_lookup_table_matches_computed)
@@ -103,47 +112,22 @@ MDS_FIRST_COLUMN = [
 # ---------------------------------------------------------------------------
 
 TIP5 = Tip5Params(
-    p=GOLDILOCKS.p,
-    t=16,
-    R=5,
-    alpha=7,
-    u=4,
     LUT=LOOKUP_TABLE,
     rcons=ROUND_CONSTANTS_T16,
     M=circulant(col=MDS_FIRST_COLUMN),
-    r=10,
-    c=6,
-    d=5,
 )
 
 # Same permutation as TIP5; only the sponge parameters differ.
-TIP4 = Tip5Params(
-    p=GOLDILOCKS.p,
-    t=16,
-    R=5,
-    alpha=7,
-    u=4,
+TIP4 = Tip4Params(
     LUT=LOOKUP_TABLE,
     rcons=ROUND_CONSTANTS_T16,
     M=circulant(col=MDS_FIRST_COLUMN),
-    r=12,
-    c=4,
-    d=4,
 )
 
 # TIP4' uses a reduced state of 12 elements.
-TIP4_PRIME = Tip5Params(
-    p=GOLDILOCKS.p,
-    t=12,
-    R=5,
-    alpha=7,
-    u=4,
+TIP4_PRIME = Tip4PrimeParams(
     LUT=LOOKUP_TABLE,
     rcons=ROUND_CONSTANTS_T12,
-    # TODO check whether the Monolith/RPO Goldilocks T12 row circulant(row=[7, 23, 8, 26, 13, 10, 9, 7, 6, 22, 21, 8])
-    # should be used instead (KATs were generated with the truncated Tip5 column below, matching the sage reference).
-    M=circulant(col=MDS_FIRST_COLUMN[:12]),
-    r=8,
-    c=4,
-    d=4,
+    #M=circulant(col=MDS_FIRST_COLUMN[:12]),
+    M=circulant(row=[7,23,8,26,13,10,9,7,6,22,21,8]),
 )

@@ -1,5 +1,28 @@
+# params.py
+# ---------------------------------------------------------------------------
+# Parameter definitions for the Hades family: HadesParams and its subclasses
+# PoseidonParams, Poseidon2Params and NeptuneParams.
+#
+# Each params class is the single source of truth for an instance: it sanitizes
+# the user-facing parameters and expands them into a fully-specified instance
+# that the permutation, hash modes, instances and tests consume. Any value the
+# user omits is filled in by the matching _init_* helper (or, for r/c/d, by the
+# shared derive_rate_capacity_digest). The subclasses differ only in their
+# _init_* derivations (round constants, external/internal matrices); the base
+# constructor and validation are shared. Settings that depart from the
+# recommended ones raise a ParamRecommendationWarning rather than an error.
+# ---------------------------------------------------------------------------
+
+# Structural imports
+from recommendations import ParamRecommendationWarning
+from types import SimpleNamespace
+
+# Math specific imports
+import warnings
+from math import gcd
 from sage.all import GF, Integer
 
+# Custom imports
 from utils import (
     LFSRFieldElementSampler,
     XOFFieldElementSampler,
@@ -11,6 +34,7 @@ from utils import (
     map_to_field,
     invert_matrix,
 )
+from modes import derive_rate_capacity_digest
 
 # ---------------------------------------------------------------------------
 # Grain LFSR settings (used by Poseidon/Poseidon2)
@@ -83,9 +107,9 @@ class HadesParams:
         alpha: int,
         R_ext: int,
         R_int: int,
-        r: int,
-        c: int,
-        d: int,
+        r: int = None,
+        c: int = None,
+        d: int = None,
         version: str = "isec",
         M_ext: list[list] = None,
         M_int: list[list] = None,
@@ -114,15 +138,23 @@ class HadesParams:
         R_ext_end       : number of external rounds after the internal rounds; default R_ext - R_ext_beg
         u               : number of branches the S-box hits in internal rounds; default 1
         kappa           : target security level in bits (default 128)
+        r/c/d are derived from kappa/t via derive_rate_capacity_digest if not provided.
         """
+
+        # Input sanitization
+        HadesParams._input_sanitization(SimpleNamespace(**{k: v for k, v in locals().items() if k != "self"}))
+
         self.p = p
         self.F = GF(p)
         self.t = t
         self.kappa = kappa
 
+        # Hash modes
+        self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
+
         # Rounds
         if R_ext is None or R_int is None:
-            R_ext, R_int = self._init_rounds(R_ext, R_int)
+            R_ext, R_int = self._init_rounds()
         self.R_ext = R_ext
         self.R_int = R_int
         self.R = R_ext + R_int
@@ -149,13 +181,8 @@ class HadesParams:
         self.M_ext_inv = invert_matrix(self.M_ext)
         self.M_int_inv = invert_matrix(self.M_int)
 
-        # Hash modes (required; supplied per instance)
-        self.r = r
-        self.c = c
-        self.d = d
-
     # ---------------------------------------------------------------------------
-    # Small helpers
+    # Small field conversion helpers
     # ---------------------------------------------------------------------------
 
     def from_field(self, el) -> Integer:
@@ -164,7 +191,34 @@ class HadesParams:
     def to_field(self, n: int):
         return self.F(n)
 
-    def _init_rounds(self, R_ext, R_int):
+    # ---------------------------------------------------------------------------
+    # Input sanitization and security requirements
+    # ---------------------------------------------------------------------------
+
+    @staticmethod
+    def _input_sanitization(params):
+        """Validate the raw constructor arguments: hard checks raise, recommendation
+        deviations warn (ParamRecommendationWarning) but do not raise. Shared by all
+        Hades subclasses; subclass-specific checks (e.g. Neptune's even t) live in the
+        subclass constructors."""
+
+        # --- Hard checks (must always hold) ---
+        if params.t < 1:
+            raise ValueError(f"state size t must be positive. Got {params.t}")
+        # alpha == -1 denotes the inverse-map S-box; otherwise alpha must be a permutation exponent.
+        if params.alpha != -1 and gcd(params.alpha, params.p - 1) != 1:
+            raise ValueError("power map does not define a permutation (gcd(alpha, p-1) != 1)")
+
+        # --- Warnings (recommended, not required) ---
+        field_bits = int(params.p).bit_length()
+        if field_bits < 31:
+            warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
+
+    # ---------------------------------------------------------------------------
+    # Derivation helpers (virtual; implemented per subclass)
+    # ---------------------------------------------------------------------------
+
+    def _init_rounds(self):
         raise NotImplementedError("Virtual function, implement in derived class.")
 
     def _init_M_ext(self):
@@ -214,7 +268,7 @@ class PoseidonParams(HadesParams):
 
     MDS_STRATEGIES = ("sampled", "fixed")
 
-    def __init__(self, *, p, t, alpha, R_ext, R_int, r, c, d,
+    def __init__(self, *, p, t, alpha, R_ext, R_int, r=None, c=None, d=None,
                  R_ext_beg=None, R_ext_end=None, version="isec", mds_strategy="sampled",
                  M=None, rcons=None, u=1, kappa=128):
         if mds_strategy not in self.MDS_STRATEGIES:
@@ -256,7 +310,7 @@ class Poseidon2Params(HadesParams):
     in external rounds and only the first u branches in internal rounds.
     mat_diag is the MAT_DIAG_M_1 vector (defaulted for t in {2,3}, supplied per instance otherwise)."""
 
-    def __init__(self, *, p, t, alpha, R_ext, R_int, r, c, d,
+    def __init__(self, *, p, t, alpha, R_ext, R_int, r=None, c=None, d=None,
                  R_ext_beg=None, R_ext_end=None, version="isec",
                  M_ext=None, rcons=None, mat_diag=None, u=1, kappa=128):
         self.mat_diag = mat_diag
@@ -316,7 +370,7 @@ class NeptuneParams(HadesParams):
     constant applied as output whitening in the permutation's _post_rounds; the leading external
     matrix is applied by _pre_rounds."""
 
-    def __init__(self, *, p, t, alpha, R_ext, R_int, r, c, d,
+    def __init__(self, *, p, t, alpha, R_ext, R_int, r=None, c=None, d=None,
                  R_ext_beg=None, R_ext_end=None, M_ext=None, rcons=None, mat_diag=None, u=1, kappa=128):
         if t % 2 != 0:
             raise ValueError("Neptune state size t must be even")

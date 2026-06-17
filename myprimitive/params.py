@@ -15,16 +15,17 @@
 # ---------------------------------------------------------------------------
 
 # Structural imports
+import warnings
 from recommendations import ParamRecommendationWarning
 from types import SimpleNamespace
 
 # Math specific imports
-import warnings
 from math import gcd
 from sage.all import GF, Integer
 
 # Custom imports
 from utils import map_to_field, invert_matrix, simple_circulant_matrix
+from modes import derive_rate_capacity_digest
 # Add any other helpers your primitive needs, e.g.:
 # from complexities import gb_comp
 # from utils import circulant, XOFFieldElementSampler
@@ -45,9 +46,9 @@ class MyPrimitiveParams:
         self,
         p:     int,
         t:     int,
-        r:     int,
-        c:     int,
-        d:     int,
+        r:     int = None,
+        c:     int = None,
+        d:     int = None,
         alpha: int = None,
         R:     int = None,
         M:     list[list[int]] = None,
@@ -61,9 +62,10 @@ class MyPrimitiveParams:
         t     : state size (number of field elements)
         alpha : S-box exponent, coprime with p-1; smallest valid exponent if not provided
         R     : number of rounds; derived from the algebraic attack complexity if not provided
-        r     : rate (number of outer state elements absorbed/squeezed per sponge step)
-        c     : capacity (number of inner state elements)
-        d     : digest size (number of output elements)
+        r     : rate (number of outer state elements absorbed/squeezed per sponge step);
+                derived from kappa/t via derive_rate_capacity_digest if not provided
+        c     : capacity (number of inner state elements); derived if not provided
+        d     : digest size (number of output elements); derived if not provided
         M     : t x t MDS matrix for the linear layer; generated via _init_mds() if not provided
         rcons : round constants; generated via _init_rcons() if not provided
         kappa : target security level in bits (default 128)
@@ -82,10 +84,11 @@ class MyPrimitiveParams:
         self.alpha = alpha if alpha is not None else self._init_alpha()
         self.alpha_inv = pow(self.alpha, -1, p - 1)
 
-        # Hash modes: values specific to sponge/compression modes defined in hash.py
-        self.r = r
-        self.c = c
-        self.d = d
+        # Hash modes: values specific to sponge/compression modes defined in hash.py.
+        # r, c, d are always optional; any omitted value is filled in by the shared
+        # derive_rate_capacity_digest helper (the same sponge/compression security relation
+        # for every primitive), rather than per-primitive _init_r/_init_c/_init_d.
+        self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Round number: given round number or derived one
         self.R = R if R is not None else self._init_R()

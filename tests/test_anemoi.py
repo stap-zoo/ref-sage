@@ -1,3 +1,15 @@
+# test_anemoi.py
+# ---------------------------------------------------------------------------
+# Test suite for Anemoi, parametrized over the named instances in instances.py.
+#
+# Groups:
+#   4.1 KATs         -- fixed input/output vectors (permutation)
+#   4.2 Roundtrip    -- permutation_inv undoes permutation (and per-layer)
+#   4.3 Consistency  -- determinism, distinct inputs -> distinct outputs, sizes
+#   4.4 Algebraic    -- closed/open Flystel identity, parameter construction
+#   4.5 Misc         -- validation/errors, Jive output size
+# ---------------------------------------------------------------------------
+
 import pytest
 
 from anemoi.hash import Anemoi
@@ -64,7 +76,7 @@ INSTANCES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Known-answer test vectors (generated with the upstream reference
+# 4.1 Known-answer test vectors (generated with the upstream reference
 # implementation, https://github.com/anemoi-hash/anemoi-hash)
 # ---------------------------------------------------------------------------
 
@@ -400,64 +412,81 @@ KAT_IDS = [
 
 @pytest.mark.parametrize("name,params,kat", KAT_CASES, ids=KAT_IDS)
 def test_permutation_kat(name, params, kat):
-    a = Anemoi(params)
-    inp = [a.to_field(x) for x in kat["input"]]
-    out = a.permutation(inp)
-    assert [a.from_field(x) for x in out] == kat["output"]
+    prim = Anemoi(params)
+    inp = [prim.to_field(x) for x in kat["input"]]
+    out = prim.permutation(inp)
+    assert [prim.from_field(x) for x in out] == kat["output"]
 
 
 # ---------------------------------------------------------------------------
-# Consistency tests
+# 4.2 Roundtrip (invertibility)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_permutation_roundtrip(name, params):
+    prim = Anemoi(params)
+    inp = [prim.F.random_element() for _ in range(prim.t)]
+    assert prim.permutation_inv(prim.permutation(inp)) == inp
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_layer_roundtrip(name, params):
+    # Each component layer must be undone by its _inv partner, for every round.
+    prim = Anemoi(params)
+    inp = [prim.F.random_element() for _ in range(prim.t)]
+    for r in range(prim.R):
+        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
+        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
+        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
+    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
+    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+
+
+# ---------------------------------------------------------------------------
+# 4.3 Consistency
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_deterministic(name, params):
-    a = Anemoi(params)
-    inp = [a.F.random_element() for _ in range(a.t)]
-    assert a.permutation(inp) == a.permutation(inp)
+    prim = Anemoi(params)
+    inp = [prim.F.random_element() for _ in range(prim.t)]
+    assert prim.permutation(inp) == prim.permutation(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_distinct_inputs(name, params):
-    a = Anemoi(params)
-    inp1 = [a.F.random_element() for _ in range(a.t)]
-    inp2 = [a.F.random_element() for _ in range(a.t)]
+    prim = Anemoi(params)
+    inp1 = [prim.F.random_element() for _ in range(prim.t)]
+    inp2 = [prim.F.random_element() for _ in range(prim.t)]
     while inp1 == inp2:
-        inp2 = [a.F.random_element() for _ in range(a.t)]
-    assert a.permutation(inp1) != a.permutation(inp2)
-
-
-@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
-def test_closed_flystel_matches_open(name, params):
-    """H(x, y) = (u, v) iff V(y, v) = (x, u)"""
-    a = Anemoi(params)
-    x, y = a.F.random_element(), a.F.random_element()
-    u, v = a.OpenFlystel(x, y)
-    assert a.ClosedFlystel(y, v) == (x, u)
-
-
-@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
-def test_permutation_roundtrip(name, params):
-    a = Anemoi(params)
-    inp = [a.F.random_element() for _ in range(a.t)]
-    assert a.permutation_inv(a.permutation(inp)) == inp
+        inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    assert prim.permutation(inp1) != prim.permutation(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
-    a = Anemoi(params)
-    data = [a.F.random_element() for _ in range(a.r * 3)]      # rate-aligned (sigma = 1)
-    assert len(a.hash_sponge(data)) == a.d
-    data = [a.F.random_element() for _ in range(a.r * 2 + 1)]  # needs padding (sigma = 0)
-    assert len(a.hash_sponge(data)) == a.d
+    prim = Anemoi(params)
+    data = [prim.F.random_element() for _ in range(prim.r * 3)]      # rate-aligned (sigma = 1)
+    assert len(prim.hash_sponge(data)) == prim.d
+    data = [prim.F.random_element() for _ in range(prim.r * 2 + 1)]  # needs padding (sigma = 0)
+    assert len(prim.hash_sponge(data)) == prim.d
 
 
 # ---------------------------------------------------------------------------
-# Parameter construction (state size given as l or t)
+# 4.4 Algebraic: Flystel identity and parameter construction
 # ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_closed_flystel_matches_open(name, params):
+    """H(x, y) = (u, v) iff V(y, v) = (x, u)"""
+    prim = Anemoi(params)
+    x, y = prim.F.random_element(), prim.F.random_element()
+    u, v = prim._open_flystel(x, y)
+    assert prim._closed_flystel(y, v) == (x, u)
+
 
 def test_params_accept_l_or_t():
-    field_args = dict(p=GOLDILOCKS.p, alpha=GOLDILOCKS.alpha, g=GOLDILOCKS.generator, R=1)
+    field_args = dict(p=GOLDILOCKS.p, alpha=GOLDILOCKS.alpha, g=GOLDILOCKS.generator, R=1, r=3, c=1, d=1)
     from_l = AnemoiParams(l=2, **field_args)
     from_t = AnemoiParams(t=4, **field_args)
     from_both = AnemoiParams(l=2, t=4, **field_args)
@@ -473,21 +502,31 @@ def test_params_accept_l_or_t():
 
 
 def test_params_derive_alpha():
-    derived = AnemoiParams(p=GOLDILOCKS.p, g=GOLDILOCKS.generator, l=1, R=1)
+    derived = AnemoiParams(p=GOLDILOCKS.p, g=GOLDILOCKS.generator, l=1, R=1, r=1, c=1, d=1)
     assert derived.alpha == GOLDILOCKS.alpha
     assert derived.alpha_inv == GOLDILOCKS.alpha_inv
 
     explicit = AnemoiParams(
         p=GOLDILOCKS.p, g=GOLDILOCKS.generator,
         alpha=GOLDILOCKS.alpha, alpha_inv=GOLDILOCKS.alpha_inv,
-        l=1, R=1,
+        l=1, R=1, r=1, c=1, d=1,
     )
     assert (explicit.alpha, explicit.alpha_inv) == (derived.alpha, derived.alpha_inv)
 
 
+# ---------------------------------------------------------------------------
+# 4.5 Misc: validation, Jive output size
+# ---------------------------------------------------------------------------
+
+def test_invalid_state_size():
+    prim = Anemoi(ANEMOI_BN254_SCALAR_T2)
+    with pytest.raises(ValueError):
+        prim.permutation([prim.F.zero()] * (prim.t + 1))
+
+
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_jive_output_size(name, params):
-    a = Anemoi(params)
-    x1 = [a.F.random_element() for _ in range(a.l)]
-    x2 = [a.F.random_element() for _ in range(a.l)]
-    assert len(a.compress_2_to_1(x1, x2)) == a.l
+    prim = Anemoi(params)
+    x1 = [prim.F.random_element() for _ in range(prim.l)]
+    x2 = [prim.F.random_element() for _ in range(prim.l)]
+    assert len(prim.compress_2_to_1(x1, x2)) == prim.l

@@ -1,3 +1,11 @@
+# hash.py
+# ---------------------------------------------------------------------------
+# Anemoi: the permutation (round function) and the hash modes built on it.
+#
+# Constructed from a fully-specified AnemoiParams object.
+# _open_flystel / _closed_flystel are per-column S-box helpers.
+# ---------------------------------------------------------------------------
+
 from anemoi.params import AnemoiParams
 from utils import matvecmul, vecadd, vecsub
 from modes import compress_jive, hash_sponge_hirose, pad_one
@@ -45,21 +53,22 @@ class Anemoi:
     # Component functions (state is x || y with x = state[:l], y = state[l:])
     # ---------------------------------------------------------------------------
 
-    def ConstantAddition(self, state: list, round_idx: int) -> list:
-        return vecadd(state[:self.l], self.C[round_idx]) + vecadd(state[self.l:], self.D[round_idx])
+    def constant_addition(self, state: list, r: int) -> list:
+        return vecadd(state[:self.l], self.C[r]) + vecadd(state[self.l:], self.D[r])
 
-    def ConstantAddition_inv(self, state: list, round_idx: int) -> list:
-        return vecsub(state[:self.l], self.C[round_idx]) + vecsub(state[self.l:], self.D[round_idx])
+    def constant_addition_inv(self, state: list, r: int) -> list:
+        return vecsub(state[:self.l], self.C[r]) + vecsub(state[self.l:], self.D[r])
 
-    def LinearLayer(self, state: list) -> list:
-        """MDS on the x-lane, MDS on the rotated y-lane, then a pseudo-Hadamard transform."""
+    def linear_layer(self, state: list, r: int) -> list:
+        """MDS on the x-lane, MDS on the rotated y-lane, then a pseudo-Hadamard transform.
+        Round-independent, so r is accepted but unused."""
         x, y = state[:self.l], state[self.l:]
         x, y = matvecmul(self.Mx, x), matvecmul(self.My, y)
         y = vecadd(y, x)
         x = vecadd(x, y)
         return x + y
 
-    def LinearLayer_inv(self, state: list) -> list:
+    def linear_layer_inv(self, state: list, r: int) -> list:
         x, y = state[:self.l], state[self.l:]
         x = vecsub(x, y)
         y = vecsub(y, x)
@@ -72,7 +81,7 @@ class Anemoi:
     def _Q_delta(self, x):
         return self.beta * x ** self.QUAD + self.delta
 
-    def OpenFlystel(self, x, y):
+    def _open_flystel(self, x, y):
         """Open Flystel H : (x, y) -> (u, v), the evaluation form using the inverse power map.
         See https://eprint.iacr.org/2022/840, Fig. 3a."""
         u = x - self._Q_gamma(y)
@@ -80,13 +89,13 @@ class Anemoi:
         u = u + self._Q_delta(v)
         return u, v
 
-    def OpenFlystel_inv(self, u, v):
+    def _open_flystel_inv(self, u, v):
         x = u - self._Q_delta(v)
         y = v + x ** self.alpha_inv
         x = x + self._Q_gamma(y)
         return x, y
 
-    def ClosedFlystel(self, y, v):
+    def _closed_flystel(self, y, v):
         """Closed Flystel V : (y, v) -> (x, u), the verification form using the forward power map.
         Equivalent to the open Flystel on consistent values: H(x, y) = (u, v) iff V(y, v) = (x, u).
         See https://eprint.iacr.org/2022/840, Fig. 3b."""
@@ -95,18 +104,36 @@ class Anemoi:
         u = e + self._Q_delta(v)
         return x, u
 
-    def NonLinearLayer(self, state: list) -> list:
-        """Open Flystel applied to each column (x_i, y_i)."""
+    def nonlinear_layer(self, state: list, r: int) -> list:
+        """Open Flystel applied to each column (x_i, y_i).
+        Round-independent, so r is accepted but unused."""
         out = list(state)
         for i in range(self.l):
-            out[i], out[self.l + i] = self.OpenFlystel(out[i], out[self.l + i])
+            out[i], out[self.l + i] = self._open_flystel(out[i], out[self.l + i])
         return out
 
-    def NonLinearLayer_inv(self, state: list) -> list:
+    def nonlinear_layer_inv(self, state: list, r: int) -> list:
         out = list(state)
         for i in range(self.l):
-            out[i], out[self.l + i] = self.OpenFlystel_inv(out[i], out[self.l + i])
+            out[i], out[self.l + i] = self._open_flystel_inv(out[i], out[self.l + i])
         return out
+
+    # ---------------------------------------------------------------------------
+    # Pre-/post-round steps. Anemoi applies a final degenerate linear layer once
+    # after the round loop (the round index is irrelevant; linear_layer ignores it).
+    # ---------------------------------------------------------------------------
+
+    def _pre_rounds(self, state: list) -> list:
+        return state
+
+    def _pre_rounds_inv(self, state: list) -> list:
+        return state
+
+    def _post_rounds(self, state: list) -> list:
+        return self.linear_layer(state, 0)
+
+    def _post_rounds_inv(self, state: list) -> list:
+        return self.linear_layer_inv(state, 0)
 
     # ---------------------------------------------------------------------------
     # Permutation
@@ -116,22 +143,23 @@ class Anemoi:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
+        state = self._pre_rounds(state)
         for r in range(self.R):
-            state = self.ConstantAddition(state, r)
-            state = self.LinearLayer(state)
-            state = self.NonLinearLayer(state)
-        return self.LinearLayer(state)  # final degenerate round
+            state = self.constant_addition(state, r)
+            state = self.linear_layer(state, r)
+            state = self.nonlinear_layer(state, r)
+        return self._post_rounds(state)
 
     def permutation_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
-        state = self.LinearLayer_inv(state)
+        state = self._post_rounds_inv(state)
         for r in reversed(range(self.R)):
-            state = self.NonLinearLayer_inv(state)
-            state = self.LinearLayer_inv(state)
-            state = self.ConstantAddition_inv(state, r)
-        return state
+            state = self.nonlinear_layer_inv(state, r)
+            state = self.linear_layer_inv(state, r)
+            state = self.constant_addition_inv(state, r)
+        return self._pre_rounds_inv(state)
 
     # ---------------------------------------------------------------------------
     # Hash modes

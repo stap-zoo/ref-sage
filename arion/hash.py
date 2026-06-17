@@ -1,3 +1,10 @@
+# hash.py
+# ---------------------------------------------------------------------------
+# Arion: the permutation (round function) and the hash modes built on it.
+#
+# Constructed from a fully-specified ArionParams object. 
+# ---------------------------------------------------------------------------
+
 from arion.params import ArionParams
 from utils import matvecmul, vecadd, vecsub, add_to_start
 from modes import hash_sponge, pad_zero
@@ -38,6 +45,18 @@ class Arion:
     # ---------------------------------------------------------------------------
     # Component functions
     # ---------------------------------------------------------------------------
+    def constant_addition(self, state: list, r: int) -> list:
+        # Round-dependent by nature: the constants added are the round-r constants.
+        return vecadd(state, self.rcons[r])
+
+    def constant_addition_inv(self, state: list, r: int) -> list:
+        return vecsub(state, self.rcons[r])
+    
+    def linear_layer(self, state: list, r: int) -> list:
+        return matvecmul(self.M, state)
+
+    def linear_layer_inv(self, state: list, r: int) -> list:
+        return matvecmul(self.M_inv, state)
 
     def _g(self, sigma, r: int, i: int):
         """g_i(x) = x^2 + a*x + b; root-free in F_p since a^2 - 4*b is a quadratic nonresidue."""
@@ -49,7 +68,7 @@ class Arion:
         c = self.coeffs_h[r][i]
         return sigma ** 2 + c * sigma
 
-    def GTDS(self, x: list, r: int) -> list:
+    def nonlinear_layer(self, x: list, r: int) -> list:
         """Generalized Triangular Dynamical System, see https://arxiv.org/pdf/2303.04639, Def 1"""
         y = [None] * self.t
         y[-1] = x[-1] ** self.alpha2_inv
@@ -61,7 +80,7 @@ class Arion:
             sigma += x[i] + y[i]                      
         return y
 
-    def GTDS_inv(self, y: list, r: int) -> list:
+    def nonlinear_layer_inv(self, y: list, r: int) -> list:
         """Inverse Generalized Triangular Dynamical System."""
         x = [None] * self.t
         x[-1] = y[-1] ** self.alpha2
@@ -75,11 +94,27 @@ class Arion:
             sigma += y[i] + x[i]                       
         return x
 
-    def AffineLayer(self, state: list, round_idx: int) -> list:
-        return vecadd(matvecmul(self.M, state), self.rcons[round_idx])
+    def AffineLayer(self, state: list, r: int) -> list:
+        return vecadd(matvecmul(self.M, state), self.rcons[r])
 
-    def AffineLayer_inv(self, state: list, round_idx: int) -> list:
-        return matvecmul(self.M_inv, vecsub(state, self.rcons[round_idx]))
+    def AffineLayer_inv(self, state: list, r: int) -> list:
+        return matvecmul(self.M_inv, vecsub(state, self.rcons[r]))
+
+    # ---------------------------------------------------------------------------
+    # Pre-/post-round steps (Arion does no work outside the loop: identities)
+    # ---------------------------------------------------------------------------
+
+    def _pre_rounds(self, state: list) -> list:
+        return state
+
+    def _pre_rounds_inv(self, state: list) -> list:
+        return state
+
+    def _post_rounds(self, state: list) -> list:
+        return state
+
+    def _post_rounds_inv(self, state: list) -> list:
+        return state
 
     # ---------------------------------------------------------------------------
     # Permutation
@@ -89,19 +124,23 @@ class Arion:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
+        state = self._pre_rounds(state)
         for r in range(self.R):
-            state = self.GTDS(state, r)
-            state = self.AffineLayer(state, r)
-        return state
+            state = self.nonlinear_layer(state, r)
+            state = self.linear_layer(state, r)
+            state = self.constant_addition(state, r)
+        return self._post_rounds(state)
 
     def permutation_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
+        state = self._post_rounds_inv(state)
         for r in reversed(range(self.R)):
-            state = self.AffineLayer_inv(state, r)
-            state = self.GTDS_inv(state, r)
-        return state
+            state = self.constant_addition_inv(state, r)
+            state = self.linear_layer_inv(state, r)
+            state = self.nonlinear_layer_inv(state, r)
+        return self._pre_rounds_inv(state)
 
     # ---------------------------------------------------------------------------
     # Hash modes

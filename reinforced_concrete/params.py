@@ -1,25 +1,47 @@
+# params.py
+# ---------------------------------------------------------------------------
+# Parameter definition for Reinforced Concrete: the ReinforcedConcreteParams class.
+#
+# ReinforcedConcreteParams is the single source of truth for an instance. It
+# sanitizes the user-facing parameters and expands them into a fully-specified
+# instance that the permutation, hash modes, instances and tests consume. Any
+# value the user omits is filled in by the matching _init_* helper (or, for
+# r/c/d, by the shared derive_rate_capacity_digest). Settings that depart from
+# the recommended ones raise a ParamRecommendationWarning rather than an error.
+# ---------------------------------------------------------------------------
+
+# Structural imports
+from recommendations import ParamRecommendationWarning
+from types import SimpleNamespace
+
+# Math specific imports
+import warnings
+from math import gcd
 from sage.all import GF, Integer, PolynomialRing, is_prime, previous_prime
 
-from utils import XOFFieldElementSampler, invert_LUT, map_to_field, invert_matrix
+# Custom imports
+from utils import XOFFieldElementSampler, invert_LUT, map_to_field, invert_matrix, mixed_radix_decompose
+from modes import derive_rate_capacity_digest
+
 
 class ReinforcedConcreteParams:
     def __init__(
         self,
         p:         int,
         t:         int,
-        R_pre:     int,
-        R_bars:    int,
-        R_post:    int,
         alpha:     int,
         si:        list[int],
-        LUT:       list[int],
-        COEFFS:    list[int],
-        M:         list[list[int]],
-        d:         int,
-        r:         int = None,
-        c:         int = None,
+        R_pre:     int = None,
+        R_bars:    int = None,
+        R_post:    int = None,
+        LUT:       list[int] = None,
+        COEFFS:    list[int] = None,
+        M:         list[list[int]] = None,
         alpha_inv: int = None,
         rcons:     list[list[int]] = None,
+        r:         int = None,
+        c:         int = None,
+        d:         int = None,
         kappa:     int = 128,
     ):
         """
@@ -27,31 +49,48 @@ class ReinforcedConcreteParams:
         ----------
         p         : field characteristic (prime)
         t         : permutation state size
-        R_pre     : number of Bricks+Concrete rounds before the Bars layer(s)
-        R_bars    : number of Bars+Concrete rounds in the middle (after R_pre, before R_post)
-        R_post    : number of Bricks+Concrete rounds after the Bars layer(s)
         alpha     : power-map exponent for the first state element in Bricks
         si        : bases for decompose/compose in the Bars layer
-        LUT       : per-digit lookup table used in Bar (same LUT can be applied to all chunks due to padding in _pad_LUT)
-        COEFFS    : Bricks polynomial coefficients
-        M         : MDS matrix (txt)
-        d         : digest size (number of output elements)
-        r         : rate (number of outer state elements absorbed/squeezed per sponge step)
-        c         : capacity (number of inner state elements)
-        alpha_inv : alpha^{-1} mod (p-1); computed if not provided
-        rcons     : Rxt round constants; generated via SHAKE128 if not provided
+        R_pre     : number of Bricks+Concrete rounds before the Bars layer(s); derived via _init_rounds if not provided
+        R_bars    : number of Bars+Concrete rounds in the middle; derived via _init_rounds if not provided
+        R_post    : number of Bricks+Concrete rounds after the Bars layer(s); derived via _init_rounds if not provided
+        LUT       : per-digit lookup table used in Bar; generated via _init_LUT if not provided
+        COEFFS    : Bricks polynomial coefficients [a_coeffs, b_coeffs]; generated via _init_COEFFS if not provided
+        M         : MDS matrix (txt); generated via _init_M if not provided
+        alpha_inv : alpha^{-1} mod (p-1); computed via _init_alpha_inv if not provided
+        rcons     : (R+1)xt round constants; generated via _init_rcons (SHAKE128) if not provided
+        r         : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
+        c         : capacity (number of inner state elements); derived if not provided
+        d         : digest size (number of output elements); derived if not provided
         kappa     : target security level in bits (default 128)
         """
-        assert len(LUT) <= 0xFFFF
-        assert len(COEFFS) == 2 and all(len(row) == t - 1 for row in COEFFS)
-        assert len(M) == t and all(len(row) == t for row in M) if M is not None else True
 
+        # Input sanitization
+        ReinforcedConcreteParams._input_sanitization(SimpleNamespace(**{k: v for k, v in locals().items() if k != "self"}))
+
+        # General settings
         self.p = p
         self.F = GF(p)
         self.t = t
         self.kappa = kappa
 
-        # Rounds
+        # Non-linear layers: Bricks
+        self.alpha = alpha
+        self.alpha_inv = alpha_inv if alpha_inv is not None else self._init_alpha_inv()
+        COEFFS = COEFFS if COEFFS is not None else self._init_COEFFS()
+        self.a_coeffs = map_to_field(COEFFS[0], self.to_field)
+        self.b_coeffs = map_to_field(COEFFS[1], self.to_field)
+
+        # Non-linear layers: Bars
+        self.si = list(si)
+        LUT = LUT if LUT is not None else self._init_LUT()
+        self.LUT = self._pad_LUT(LUT, max(si))
+        self.LUT_inv = invert_LUT(self.LUT)
+
+        # Hash modes
+        self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
+
+        # Rounds (set before _init_rcons, whose derivation depends on R)
         if R_pre is None or R_bars is None or R_post is None:
             R_pre, R_bars, R_post = self._init_rounds()
         self.R_pre = R_pre
@@ -59,34 +98,15 @@ class ReinforcedConcreteParams:
         self.R_post = R_post
         self.R = R_pre + R_bars + R_post
 
-        # Non-linear layers: Bricks
-        self.alpha = alpha
-        self.alpha_inv = alpha_inv if alpha_inv is not None else pow(alpha, -1, p - 1)
-        COEFFS = COEFFS if COEFFS is not None else self._init_coeffs()
-        self.a_coeffs = map_to_field(COEFFS[0], self.to_field)
-        self.b_coeffs = map_to_field(COEFFS[1], self.to_field)
-
-        # Non-linear layers: Bars
-        self.si = list(si)
-        LUT = LUT if LUT is not None else self._init_lut()
-        self.LUT = self._pad_LUT(LUT, max(si)) if LUT is not None else self._pad_LUT(self._init_lut(), max(si))
-        self.LUT_inv = invert_LUT(self.LUT)
-
         # Affine layer
-        M = M if M is not None else self._init_mds()
-        self.M = map_to_field(M, self.to_field)
+        self.M = map_to_field(M if M is not None else self._init_M(), self.to_field)
         self.M_inv = invert_matrix(self.M)
 
-        self.rcons = rcons if rcons is not None else self._init_rcons()
-        self.rcons = map_to_field(self.rcons, self.to_field)
-
-        # Hash modes
-        self.r = r
-        self.c = c
-        self.d = d
+        # Round constants
+        self.rcons = map_to_field(rcons if rcons is not None else self._init_rcons(), self.to_field)
 
     # ---------------------------------------------------------------------------
-    # Small helpers
+    # Small field conversion helpers
     # ---------------------------------------------------------------------------
 
     def from_field(self, el) -> Integer:
@@ -95,7 +115,42 @@ class ReinforcedConcreteParams:
     def to_field(self, n: int):
         return self.F(n)
 
-    def _init_coeffs(self) -> list[list[int]]:
+    # ---------------------------------------------------------------------------
+    # Input sanitization and security requirements
+    # ---------------------------------------------------------------------------
+
+    @staticmethod
+    def _input_sanitization(params):
+        """Validate the raw constructor arguments: hard checks raise, recommendation
+        deviations warn (ParamRecommendationWarning) but do not raise."""
+
+        # --- Hard checks (must always hold) ---
+        if params.p == 2:
+            raise NotImplementedError("Characteristic 2 not implemented")
+        if params.t < 1:
+            raise ValueError(f"state size t must be positive. Got {params.t}")
+        if gcd(params.alpha, params.p - 1) != 1:
+            raise ValueError("power map does not define a permutation (gcd(alpha, p-1) != 1)")
+        if params.LUT is not None and len(params.LUT) > 0xFFFF:
+            raise ValueError("LUT must fit in 16 bits (len(LUT) <= 0xFFFF)")
+        if params.COEFFS is not None and not (len(params.COEFFS) == 2 and all(len(row) == params.t - 1 for row in params.COEFFS)):
+            raise ValueError(f"COEFFS must be [a_coeffs, b_coeffs] each of length t-1 = {params.t - 1}")
+        if params.M is not None and not (len(params.M) == params.t and all(len(row) == params.t for row in params.M)):
+            raise ValueError(f"M must be a {params.t}x{params.t} matrix")
+
+        # --- Warnings (recommended, not required) ---
+        field_bits = int(params.p).bit_length()
+        if field_bits < 31:
+            warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
+
+    # ---------------------------------------------------------------------------
+    # Derivation helpers (defaults for the optional parameters)
+    # ---------------------------------------------------------------------------
+
+    def _init_alpha_inv(self) -> int:
+        return pow(self.alpha, -1, self.p - 1)
+
+    def _init_COEFFS(self) -> list[list[int]]:
         """Generate Bricks coefficients (alpha_i, beta_i) for i = 1, ..., t-1.
 
         Bricks is invertible iff every quadratic z^2 + alpha_i*z + beta_i is non-zero
@@ -130,18 +185,18 @@ class ReinforcedConcreteParams:
 
     def _lut_prime(self) -> int:
         """The prime p' on which the per-digit S-box acts.
- 
+
         Each digit S-box S_i is a permutation of Z_{s_i} that applies the non-linear
         permutation f to inputs in {0, ..., p'-1} and the identity to the remaining
         inputs {p', ..., s_i - 1}. For this to be a permutation of every Z_{s_i}, p'
-        must be <= every digit of (p - 1) and prime. Following RC Section 6.1, p' is 
+        must be <= every digit of (p - 1) and prime. Following RC Section 6.1, p' is
         the largest prime <= v, where  v = min_i v_i and (v_1, ..., v_n) = Decomp(p - 1).
         (For BLS12-381 p' = 659, for BN254 p' = 641, for the ST prime p' = 1013.)
         """
         v = mixed_radix_decompose(self.p - 1, self.si, self.from_field)
         v_min = int(min(v))
         return v_min if is_prime(v_min) else previous_prime(v_min)
- 
+
     @staticmethod
     def _lut_exponent(p_prime: int) -> int:
         """Smallest d that is a prime of the form 2^n - 1 (a Mersenne prime) with
@@ -152,7 +207,7 @@ class ReinforcedConcreteParams:
             if is_prime(d) and gcd(d, p_prime - 1) == 1:
                 return d
             n += 1
- 
+
     @staticmethod
     def _lut_rounds(p_prime: int, d: int) -> int:
         """r = 2 * ceil(log_d(p')), the number of (X + c_i)^d steps composed into f."""
@@ -160,27 +215,27 @@ class ReinforcedConcreteParams:
         while d ** k < p_prime:
             k += 1
         return 2 * k
- 
-    def _init_lut(self, max_trials: int = 1000) -> list[int]:
+
+    def _init_LUT(self, max_trials: int = 1000) -> list[int]:
         """Generate the S-box lookup table f(0), ..., f(p'-1) as described in RC App. A.3
         in https://eprint.iacr.org/2021/1038.pdf.
- 
+
         f is the non-identity part of every per-digit S-box. It must be a permutation
         of F_{p'} with a high-degree, dense polynomial representation. It is built as a
         keyed-MiMC-style composition
- 
+
             f(X) = (f_r ° f_{r-1} ° ... ° f_1)(X),    f_i(X) = (X + c_i)^d  in F_{p'}[X],
- 
+
         with d the smallest Mersenne prime coprime to p'-1, r = 2*ceil(log_d(p')), and
         random constants c_i. We resample the c_i until f reaches the maximum degree
         p'-2 (permutation polynomials cannot reach p'-1) and full density of p'-1
-        non-zero coefficients. 
+        non-zero coefficients.
 
         Returns the unpadded table of length p'; _pad_LUT extends it with identity
         entries up to max(si).
-        
-        NOTE: The constants are drawn deterministically from a SHAKE-128 stream seeded from the 
-        instance, so the table is reproducible; it is NOT expected to match a specific published 
+
+        NOTE: The constants are drawn deterministically from a SHAKE-128 stream seeded from the
+        instance, so the table is reproducible; it is NOT expected to match a specific published
         table, whose original (undisclosed) random constants differ. In particular, so concrete
         sampling method was described in the paper.
         """
@@ -188,35 +243,36 @@ class ReinforcedConcreteParams:
         Fp = GF(p_prime)
         d = self._lut_exponent(p_prime)
         r = self._lut_rounds(p_prime, d)
- 
+
         R = PolynomialRing(Fp, "X")
         X = R.gen()
         reduction = X ** p_prime - X  # reduce to the degree-<p' function representative
- 
+
+        n_bytes = (self.p.bit_length() + 7) // 8
         seed = b"ReinforcedConcrete" + self.p.to_bytes(n_bytes, "little")
         sampler = XOFFieldElementSampler(seed=seed, p=p_prime, xof="shake_128", sampling="bitmask")
- 
+
         for _ in range(max_trials):
             f = X
             for _ in range(r):
                 c = sampler.next()
                 f = ((f + c) ** d) % reduction
- 
+
             if f.degree() == p_prime - 2 and len(f.coefficients()) == p_prime - 1:
                 return [int(f(Fp(x))) for x in range(p_prime)]
- 
+
         raise RuntimeError(f"Failed to find a dense, maximum-degree S-box polynomial for p'={p_prime} within {max_trials} trials.")
 
     def _init_rcons(self) -> list[list[int]]:
         n_bytes = (self.p.bit_length() + 7) // 8
         seed = b"ReinforcedConcrete" + self.p.to_bytes(n_bytes, "little")
         return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_128", sampling="bitmask").grid(self.R + 1, self.t)
-    
-    def _init_rounds(self, R_pre, R_bars, R_post) -> (int,int,int):
-        # TODO implement
+
+    def _init_rounds(self) -> tuple[int, int, int]:
+        # TODO implement (returns the (R_pre, R_bars, R_post) split)
         raise NotImplementedError("Automatic round number derivation not implemented for RC.")
 
-    def _init_mds(self):
+    def _init_M(self):
         # TODO implement
         raise NotImplementedError("MDS matrix generation not implemented for RC.")
 
@@ -226,4 +282,3 @@ class ReinforcedConcreteParams:
         for i in range(len(LUT), max_si):
             out.append(i)
         return out
-

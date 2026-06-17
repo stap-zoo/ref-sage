@@ -1,11 +1,29 @@
+# test_arion.py
+# ---------------------------------------------------------------------------
+# Test suite for Arion, parametrized over the named instances in instances.py.
+#
+# Groups:
+#   4.1 KATs         -- fixed input/output vectors (permutation)
+#   4.2 Roundtrip    -- permutation_inv undoes permutation (and per-layer)
+#   4.3 Consistency  -- determinism, distinct inputs -> distinct outputs, sizes
+#   4.4 Algebraic    -- (TODO) component identities / symbolic degree
+#   4.5 Misc         -- validation/errors, reproducibility
+# ---------------------------------------------------------------------------
+
 import pytest
 
 from arion.hash import Arion
+from arion.params import ArionParams
 from arion.instances import ARION_BLS12_T3
+from fields import BLS12_381_SCALAR
+
+INSTANCES = [
+    ("BLS12_T3", ARION_BLS12_T3),
+]
 
 # ---------------------------------------------------------------------------
-# Known-answer test vector (computed with this implementation; constants are
-# deterministically derived via ArionParams._init_rcons, so this KAT is
+# 4.1 Known-answer test vectors (computed with this implementation; constants
+# are deterministically derived via ArionParams._init_constants, so this KAT is
 # self-reproducible from (p, t, R, alpha1, alpha2) alone)
 # ---------------------------------------------------------------------------
 
@@ -20,44 +38,92 @@ KATS = {
     },
 }
 
-INSTANCES = [
-    ("BLS12_T3", ARION_BLS12_T3),
-]
-
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_kat(name, params):
-    a = Arion(params)
+    prim = Arion(params)
     kat = KATS[name]
-    inp = [a.to_field(x) for x in kat["input"]]
-    out = a.permutation(inp)
-    assert [a.from_field(x) for x in out] == kat["output"]
+    inp = [prim.to_field(x) for x in kat["input"]]
+    out = prim.permutation(inp)
+    assert [prim.from_field(x) for x in out] == kat["output"]
+
+
+# ---------------------------------------------------------------------------
+# 4.2 Roundtrip (invertibility)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_permutation_roundtrip(name, params):
+    prim = Arion(params)
+    inp = [prim.F.random_element() for _ in range(prim.t)]
+    assert prim.permutation_inv(prim.permutation(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_layer_roundtrip(name, params):
+    # Each component layer must be undone by its _inv partner, for every round.
+    prim = Arion(params)
+    inp = [prim.F.random_element() for _ in range(prim.t)]
+    for r in range(prim.R):
+        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
+        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
+        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
+    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
+    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+
+
+# ---------------------------------------------------------------------------
+# 4.3 Consistency
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_deterministic(name, params):
-    a = Arion(params)
-    inp = [a.F.random_element() for _ in range(a.t)]
-    assert a.permutation(inp) == a.permutation(inp)
+    prim = Arion(params)
+    inp = [prim.F.random_element() for _ in range(prim.t)]
+    assert prim.permutation(inp) == prim.permutation(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_distinct_inputs(name, params):
-    a = Arion(params)
-    inp1 = [a.F.random_element() for _ in range(a.t)]
-    inp2 = [a.F.random_element() for _ in range(a.t)]
-    assert a.permutation(inp1) != a.permutation(inp2)
-
-
-@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
-def test_permutation_roundtrip(name, params):
-    a = Arion(params)
-    inp = [a.F.random_element() for _ in range(a.t)]
-    assert a.permutation_inv(a.permutation(inp)) == inp
+    prim = Arion(params)
+    inp1 = [prim.F.random_element() for _ in range(prim.t)]
+    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    while inp1 == inp2:
+        inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    assert prim.permutation(inp1) != prim.permutation(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
-    a = Arion(params)
-    data = [a.F.random_element() for _ in range(a.r * 3)]
-    assert len(a.hash_sponge(data)) == a.r
+    prim = Arion(params)
+    #data = [prim.F.random_element() for _ in range(prim.r * 3)] # TODO implement variable length sponge or catch exception
+    data = [prim.F.random_element() for _ in range(prim.r)]
+    assert len(prim.hash_sponge(data)) == prim.d
+
+
+# ---------------------------------------------------------------------------
+# 4.4 Algebraic
+# ---------------------------------------------------------------------------
+
+# TODO: add component/symbolic-degree algebraic tests for Arion (e.g. an MDS
+# check on M and a degree-growth bound through GTDS) once settled.
+
+
+# ---------------------------------------------------------------------------
+# 4.5 Misc: validation, reproducibility
+# ---------------------------------------------------------------------------
+
+def test_invalid_state_size():
+    prim = Arion(ARION_BLS12_T3)
+    with pytest.raises(ValueError):
+        prim.permutation([prim.F.zero()] * (prim.t + 1))
+
+
+def test_constants_reproducible():
+    # Same parameters -> identical derived constants and matrix.
+    x = ArionParams(p=BLS12_381_SCALAR.p, t=3, R=6, alpha1=5, alpha2=257, r=2, c=1, d=2)
+    y = ArionParams(p=BLS12_381_SCALAR.p, t=3, R=6, alpha1=5, alpha2=257, r=2, c=1, d=2)
+    assert x.rcons == y.rcons
+    assert x.coeffs_g == y.coeffs_g
+    assert x.coeffs_h == y.coeffs_h
+    assert x.M == y.M

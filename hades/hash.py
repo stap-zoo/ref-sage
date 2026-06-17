@@ -1,12 +1,22 @@
+# hash.py
+# ---------------------------------------------------------------------------
+# Hades family: the abstract HadesLikePermutation and its concrete Poseidon /
+# Poseidon2 / Neptune permutations, plus the hash modes built on them.
+#
+# Each class is constructed from a fully-specified params object and only
+# *applies* the parameters (no derivation/validation).
+# ---------------------------------------------------------------------------
+
 from utils import matvecmul, vecadd, vecsub, add_to_start
 from modes import hash_sponge, pad_zero, compress_davies_meyer
 import warnings
+from recommendations import ModeRecommendationWarning
 
 
 class HadesLikePermutation:
     """Abstract Hades-strategy permutation: external (full) rounds, then internal (partial)
     rounds, then external rounds, around a state of t branches. Each round is ARK -> S-box ->
-    matrix (round constant rcons[round_idx] added before the S-box).
+    matrix (round constant rcons[r] added before the S-box).
 
     The work done once outside the round loop is left to the subclass via _pre_rounds /
     _post_rounds (and their inverses): a leading external matrix (Poseidon2, Neptune), output
@@ -52,37 +62,38 @@ class HadesLikePermutation:
     # Component functions
     # ---------------------------------------------------------------------------
 
-    def NonLinearLayerExternal(self, state: list) -> list:
-        return [x ** self.alpha for x in state]
+    def _is_internal_round(self, r):
+        return self.R_ext_beg <= r < self.R_ext_beg + self.R_int
 
-    def NonLinearLayerExternal_inv(self, state: list) -> list:
-        return [x ** self.alpha_inv for x in state]
+    def constant_addition(self, state: list, r: int) -> list:
+        return vecadd(state, self.rcons[r])
 
-    def NonLinearLayerInternal(self, state: list) -> list:
-        return [x ** self.alpha for x in state[:self.u]] + state[self.u:]
+    def constant_addition_inv(self, state: list, r: int) -> list:
+        return vecsub(state, self.rcons[r])
 
-    def NonLinearLayerInternal_inv(self, state: list) -> list:
-        return [x ** self.alpha_inv for x in state[:self.u]] + state[self.u:]
+    def linear_layer(self, state: list, r: int) -> list:
+        if self._is_internal_round(r):
+            return matvecmul(self.M_int, state)
+        else:
+            return matvecmul(self.M_ext, state)
 
-    def RoundFunctionExternal(self, state: list, round_idx: int) -> list:
-        state = vecadd(state, self.rcons[round_idx])
-        state = self.NonLinearLayerExternal(state)
-        return matvecmul(self.M_ext, state)
-    
-    def RoundFunctionExternal_inv(self, state: list, round_idx: int) -> list:
-        state = matvecmul(self.M_ext_inv, state)
-        state = self.NonLinearLayerExternal_inv(state)
-        return vecsub(state, self.rcons[round_idx])
+    def linear_layer_inv(self, state: list, r: int) -> list:
+        if self._is_internal_round(r):
+            return matvecmul(self.M_int_inv, state)
+        else:
+            return matvecmul(self.M_ext_inv, state)
 
-    def RoundFunctionInternal(self, state: list, round_idx: int) -> list:
-        state = vecadd(state, self.rcons[round_idx])
-        state = self.NonLinearLayerInternal(state)
-        return matvecmul(self.M_int, state)
-    
-    def RoundFunctionInternal_inv(self, state: list, round_idx: int) -> list:
-        state = matvecmul(self.M_int_inv, state)
-        state = self.NonLinearLayerInternal_inv(state)
-        return vecsub(state, self.rcons[round_idx])
+    def nonlinear_layer(self, state: list, r: int) -> list:
+        if self._is_internal_round(r):
+            return [x ** self.alpha for x in state[:self.u]] + state[self.u:]
+        else:
+            return [x ** self.alpha for x in state]
+
+    def nonlinear_layer_inv(self, state: list, r: int) -> list:
+        if self._is_internal_round(r):
+            return [x ** self.alpha_inv for x in state[:self.u]] + state[self.u:]
+        else:
+            return [x ** self.alpha_inv for x in state]
 
     # ---------------------------------------------------------------------------
     # Pre-/post-round steps (the work done once outside the round loop). Defined by each
@@ -111,12 +122,10 @@ class HadesLikePermutation:
 
         state = self._pre_rounds(state)
 
-        for r in range(self.R_ext_beg):
-            state = self.RoundFunctionExternal(state, r)
-        for r in range(self.R_ext_beg, self.R_ext_beg + self.R_int):
-            state = self.RoundFunctionInternal(state, r)
-        for r in range(self.R_ext_beg + self.R_int, self.R):
-            state = self.RoundFunctionExternal(state, r)
+        for r in range(self.R):
+            state = self.constant_addition(state, r)
+            state = self.nonlinear_layer(state, r)
+            state = self.linear_layer(state, r)
 
         return self._post_rounds(state)
 
@@ -126,12 +135,10 @@ class HadesLikePermutation:
 
         state = self._post_rounds_inv(state)
 
-        for r in reversed(range(self.R_ext_beg + self.R_int, self.R)):
-            state = self.RoundFunctionExternal_inv(state, r)
-        for r in reversed(range(self.R_ext_beg, self.R_ext_beg + self.R_int)):
-            state = self.RoundFunctionInternal_inv(state, r)
-        for r in reversed(range(self.R_ext_beg)):
-            state = self.RoundFunctionExternal_inv(state, r)
+        for r in reversed(range(self.R)):
+            state = self.linear_layer_inv(state, r)
+            state = self.nonlinear_layer_inv(state, r)
+            state = self.constant_addition_inv(state, r)
 
         return self._pre_rounds_inv(state)
 
@@ -184,7 +191,7 @@ class Poseidon(HadesLikePermutation):
             UserWarning,
             stacklevel=2,
         )
-        super().compress_2_to_1(x1, x2)
+        return super().compress_2_to_1(x1, x2)
 
 class Poseidon2(HadesLikePermutation):
     """Poseidon2: a leading external matrix, distinct external/internal matrices, power-map
@@ -239,7 +246,7 @@ class Neptune(HadesLikePermutation):
         s = beta * ((x - y) * alpha_inv) ** 2
         return (x - s) * alpha_inv, (y - s) * alpha_inv
 
-    def SBox(self, x, y):
+    def _sbox(self, x, y):
         """Neptune external Lai-Massey-like S-box,  see Eq. (22) of https://eprint.iacr.org/2021/1695.pdf."""
         x, y = self._S_F(x, y, self.lm_alpha, self.lm_beta)
         x, y = matvecmul(self.lm_M, [x,y])
@@ -247,31 +254,33 @@ class Neptune(HadesLikePermutation):
         x, y = self._S_F(x, y, self.lm_alpha, self.lm_beta)
         return vecadd([x, y], [-self.lm_alpha * self.lm_gamma, self.F.zero()])
     
-    def SBox_inv(self, x, y):
+    def _sbox_inv(self, x, y):
         x, y = vecsub([x, y], [-self.lm_alpha * self.lm_gamma, self.F.zero()])
         x, y = self._S_F_inv(x, y, self.lm_alpha, self.lm_beta)
         x, y = matvecmul(self.lm_M_inv, vecsub([x, y], [self.lm_gamma, self.F.zero()]))
         return self._S_F_inv(x, y, self.lm_alpha, self.lm_beta)
 
-    def NonLinearLayerExternal(self, state: list) -> list:
-        out = []
-        for i in range(0, self.t, 2):
-            y1, y2 = self.SBox(state[i], state[i + 1])
-            out += [y1, y2]
-        return out
+    def nonlinear_layer(self, state: list, r: int) -> list:
+        if self._is_internal_round(r): # same as Poseidon2
+            return [x ** self.alpha for x in state[:self.u]] + state[self.u:] 
+        else: # Apply quadratic pair-wise S-box
+            out = []
+            for i in range(0, self.t, 2):
+                y1, y2 = self._sbox(state[i], state[i + 1])
+                out += [y1, y2]
+            return out
 
-    def NonLinearLayerExternal_inv(self, state: list) -> list:
-        out = []
-        for i in range(0, self.t, 2):
-            x1, x2 = self.SBox_inv(state[i], state[i + 1])
-            out += [x1, x2]
-        return out
+    def nonlinear_layer_inv(self, state: list, r: int) -> list:
+        if self._is_internal_round(r):
+            return [x ** self.alpha_inv for x in state[:self.u]] + state[self.u:]
+        else:
+            out = []
+            for i in range(0, self.t, 2):
+                x1, x2 = self._sbox_inv(state[i], state[i + 1])
+                out += [x1, x2]
+            return out
 
     def compress_2_to_1(self, x1: list, x2: list) -> list:
-        warnings.warn("Neptune does not define a compression mode; using the generic "
-            "truncated-feed-forward construction. This is an unanalyzed extension, "
-            "not part of the Neptune specification.",
-            UserWarning,
-            stacklevel=2,
-        )
-        super().compress_2_to_1(x1, x2)
+        msg = "Neptune does not define a compression mode; using truncated-feed-forward construction."
+        warnings.warn(msg, ModeRecommendationWarning, stacklevel=2)
+        return super().compress_2_to_1(x1, x2)
