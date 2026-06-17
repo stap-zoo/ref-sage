@@ -11,6 +11,7 @@ from utils import matvecmul, vecadd, vecsub, add_to_start
 from modes import hash_sponge, pad_zero, compress_davies_meyer
 import warnings
 from recommendations import ModeRecommendationWarning
+from hades.params import PoseidonParams, Poseidon2Params, NeptuneParams
 
 
 class HadesLikePermutation:
@@ -184,6 +185,9 @@ class Poseidon(HadesLikePermutation):
     """Poseidon: a single MDS matrix for external and internal rounds, power-map S-box,
     full-width round constants before each S-box. No leading matrix."""
 
+    def __init__(self, params: PoseidonParams):
+        super().__init__(params)
+
     def compress_2_to_1(self, x1: list, x2: list) -> list:
         warnings.warn("Poseidon does not define a compression mode; using the generic "
             "truncated-feed-forward construction. This is an unanalyzed extension, "
@@ -197,6 +201,9 @@ class Poseidon2(HadesLikePermutation):
     """Poseidon2: a leading external matrix, distinct external/internal matrices, power-map
     S-box, internal-round constants on branch 0 only. Leading external matrix."""
 
+    def __init__(self, params: Poseidon2Params):
+        super().__init__(params)
+
     def _pre_rounds(self, state: list) -> list:
         return matvecmul(self.M_ext, state)
 
@@ -209,7 +216,7 @@ class Neptune(HadesLikePermutation):
     linear layers follow the Hades template. A leading external matrix is applied up front;
     its S->M->ARK round order needs no leading constant."""
 
-    def __init__(self, params):
+    def __init__(self, params: NeptuneParams):
         super().__init__(params)
         self.lm_alpha = params.lm_alpha
         self.lm_alpha_inv = params.lm_alpha_inv
