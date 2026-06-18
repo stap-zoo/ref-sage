@@ -15,7 +15,7 @@ import pytest
 from arion.hash import Arion
 from arion.params import ArionParams
 from arion.instances import ARION_BLS12_T3
-from fields import BLS12_381_SCALAR
+from utils.field import BLS12_381_SCALAR
 
 INSTANCES = [
     ("BLS12_T3", ARION_BLS12_T3),

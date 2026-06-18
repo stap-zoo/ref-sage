@@ -3,12 +3,12 @@
 # Concrete, named parameter sets for Tip5 and its TIP4 / TIP4' variants.
 #
 # Each entry is a ready-to-use Tip5Params instance pinned to the Goldilocks
-# field from fields.py, so every consumer agrees on the exact same parameters.
+# field from utils/field.py, so every consumer agrees on the exact same parameters.
 # TIP5/TIP4/TIP4' are the spec-proper instance names (single field, Goldilocks).
 # ---------------------------------------------------------------------------
 
-from fields import GOLDILOCKS
-from utils import circulant
+from utils.field import GOLDILOCKS
+from utils.matrix import circulant
 from tip5.params import Tip5Params, Tip4Params, Tip4PrimeParams
 
 # ---------------------------------------------------------------------------

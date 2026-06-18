@@ -21,8 +21,9 @@ from math import gcd
 from sage.all import GF, Integer, legendre_symbol
 
 # Custom imports
-from utils import m4_to_block_circulant_matrix, circulant, XOFFieldElementSampler, map_to_field, invert_matrix
-from modes import derive_rate_capacity_digest
+from utils.matrix import m4_to_block_circulant_matrix, circulant, map_nested, invert_matrix
+from utils.sampler import XOFFieldElementSampler
+from utils.mode import derive_rate_capacity_digest
 
 
 class GriffinParams:
@@ -79,18 +80,18 @@ class GriffinParams:
             _rcons, _coeffs_G = self._init_constants()
             rcons = rcons if rcons is not None else _rcons
             coeffs_G = coeffs_G if coeffs_G is not None else _coeffs_G
-        self.coeffs_G = map_to_field(coeffs_G, self.to_field)
+        self.coeffs_G = map_nested(coeffs_G, self.to_field)
 
         # Hash modes
         self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Linear layer
-        self.M = map_to_field(M if M is not None else self._init_M(), self.to_field)
+        self.M = map_nested(M if M is not None else self._init_M(), self.to_field)
         self.M_inv = invert_matrix(self.M)
 
         # Round constants: pad with a zero row so AffineLayer can uniformly index
         # rcons[round_idx] for round_idx in 0..R-1 (the final round has none).
-        self.rcons = map_to_field(rcons, self.to_field) + [[self.F.zero()] * self.t]
+        self.rcons = map_nested(rcons, self.to_field) + [[self.F.zero()] * self.t]
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers

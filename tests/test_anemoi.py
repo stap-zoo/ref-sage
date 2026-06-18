@@ -14,7 +14,7 @@ import pytest
 
 from anemoi.hash import Anemoi
 from anemoi.params import AnemoiParams
-from fields import GOLDILOCKS
+from utils.field import GOLDILOCKS
 from anemoi.instances import (
     ANEMOI_BLS12_381_BASE_T2,
     ANEMOI_BLS12_381_BASE_T4,

@@ -1,4 +1,12 @@
-# For verification of field parameters, run with sage's Python: sage --python fields.py
+"""Field definitions and predefined field instances.
+
+The `Field` type plus the concrete fields used throughout the repo (Goldilocks,
+Mersenne-31, the BLS/BN scalar fields, ...), so every consumer of an instance shares the
+exact same field parameters. Also includes helpers to derive field parameters (alpha,
+generator). Add a new `Field` here if the one you need is missing.
+
+For verification of field parameters, run with sage's Python: sage --python field.py
+"""
 
 from dataclasses import dataclass
 from math import gcd

@@ -3,11 +3,11 @@
 # Concrete, named parameter sets for Anemoi.
 #
 # Each entry is a ready-to-use AnemoiParams instance pinned to a specific field
-# from fields.py, so every consumer agrees on the exact same parameters.
+# from utils/field.py, so every consumer agrees on the exact same parameters.
 # Naming convention: ANEMOI_<FIELD>_<VARIANT> (T<state size>).
 # ---------------------------------------------------------------------------
 
-from fields import (
+from utils.field import (
     BLS12_381_BASE, BLS12_381_SCALAR,
     BLS12_377_BASE, BLS12_377_SCALAR,
     BN254_BASE, BN254_SCALAR,

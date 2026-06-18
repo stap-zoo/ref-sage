@@ -1,3 +1,9 @@
+"""Attack-complexity estimators.
+
+log2 cost estimates of algebraic attacks (e.g. Groebner-basis), used when arguing the
+security level of a parameter set.
+"""
+
 from math import comb, log
 
 

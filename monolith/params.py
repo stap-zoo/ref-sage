@@ -19,8 +19,10 @@ import warnings
 from sage.all import GF, Integer
 
 # Custom imports
-from utils import XOFFieldElementSampler, invert_LUT, map_to_field, invert_matrix
-from modes import derive_rate_capacity_digest
+from utils.sampler import XOFFieldElementSampler
+from utils.lut import invert_LUT
+from utils.matrix import map_nested, invert_matrix
+from utils.mode import derive_rate_capacity_digest
 
 
 class MonolithParams:
@@ -78,13 +80,13 @@ class MonolithParams:
         self.R = R if R is not None else self._init_R()
 
         # Affine layer
-        self.M = map_to_field(M if M is not None else self._init_M(), self.to_field)
+        self.M = map_nested(M if M is not None else self._init_M(), self.to_field)
         self.M_inv = invert_matrix(self.M)
 
         # Round constants: pad with a trailing zero row so AffineLayer can uniformly index
         # rcons[round_idx] for round_idx in 0..R-1 (the final round has no round constants).
         rcons = rcons if rcons is not None else self._init_rcons()
-        self.rcons = map_to_field(rcons, self.to_field) + [[self.F.zero()] * self.t]
+        self.rcons = map_nested(rcons, self.to_field) + [[self.F.zero()] * self.t]
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers

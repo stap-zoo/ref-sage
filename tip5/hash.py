@@ -15,8 +15,9 @@
 # ---------------------------------------------------------------------------
 
 from tip5.params import Tip5Params, Tip4Params, Tip4PrimeParams
-from utils import matvecmul, vecadd, vecsub, mixed_radix_decompose, mixed_radix_compose, add_to_start
-from modes import hash_sponge, pad_fixed_length
+from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
+from utils.lut import mixed_radix_decompose, mixed_radix_compose
+from utils.mode import hash_sponge, pad_fixed_length
 
 
 class Tip5:

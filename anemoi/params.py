@@ -20,9 +20,9 @@ from math import gcd
 from sage.all import GF, Integer
 
 # Custom imports
-from complexities import gb_comp
-from utils import circulant, is_mds, pht_matrix, dl_m33_52_matrix, dl_m46_83_matrix, map_to_field, invert_matrix
-from modes import derive_rate_capacity_digest
+from utils.complexities import gb_comp
+from utils.matrix import circulant, is_mds, pht_matrix, dl_m33_52_matrix, dl_m46_83_matrix, map_nested, invert_matrix
+from utils.mode import derive_rate_capacity_digest
 
 # Digits of pi, used to derive the round constants via an open butterfly.
 PI_0 = 1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679
@@ -107,7 +107,7 @@ class AnemoiParams:
 
         # Affine layer
         Mx = M if M is not None else self._init_M()
-        self.Mx = map_to_field(Mx, self.to_field)
+        self.Mx = map_nested(Mx, self.to_field)
         self.Mx_inv = invert_matrix(self.Mx)
 
         self.My = self._init_My_from_Mx()

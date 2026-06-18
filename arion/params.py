@@ -20,8 +20,9 @@ from math import gcd
 from sage.all import GF, Integer, legendre_symbol
 
 # Custom imports
-from utils import simple_circulant_matrix, XOFFieldElementSampler, map_to_field, invert_matrix
-from modes import derive_rate_capacity_digest
+from utils.matrix import simple_circulant_matrix, map_nested, invert_matrix
+from utils.sampler import XOFFieldElementSampler
+from utils.mode import derive_rate_capacity_digest
 
 
 class ArionParams:
@@ -87,16 +88,16 @@ class ArionParams:
             rcons = rcons if rcons is not None else _rcons
             coeffs_g = coeffs_g if coeffs_g is not None else _coeffs_g
             coeffs_h = coeffs_h if coeffs_h is not None else _coeffs_h
-        self.coeffs_g = map_to_field(coeffs_g, self.to_field)
-        self.coeffs_h = map_to_field(coeffs_h, self.to_field)
+        self.coeffs_g = map_nested(coeffs_g, self.to_field)
+        self.coeffs_h = map_nested(coeffs_h, self.to_field)
 
         # Hash modes
         self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Affine layer
-        self.M = map_to_field(M if M is not None else self._init_M(), self.to_field)
+        self.M = map_nested(M if M is not None else self._init_M(), self.to_field)
         self.M_inv = invert_matrix(self.M)
-        self.rcons = map_to_field(rcons, self.to_field)
+        self.rcons = map_nested(rcons, self.to_field)
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers

@@ -52,7 +52,7 @@ RPO_T16_KATS = [
 ]
 
 
-# RPO KATs disabled: modes.hash_sponge places the rate first and the capacity
+# RPO KATs disabled: mode.hash_sponge places the rate first and the capacity
 # last in the state, whereas the RPO spec has the capacity first and the rate
 # last (capacity and rate exchanged), so hash_sponge does not currently
 # reproduce these vectors.

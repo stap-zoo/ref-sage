@@ -24,8 +24,8 @@ from math import gcd
 from sage.all import GF, Integer
 
 # Custom imports
-from utils import map_to_field, invert_matrix, simple_circulant_matrix
-from modes import derive_rate_capacity_digest
+from utils.matrix import map_nested, invert_matrix, simple_circulant_matrix
+from utils.mode import derive_rate_capacity_digest
 # Add any other helpers your primitive needs, e.g.:
 # from complexities import gb_comp
 # from utils import circulant, XOFFieldElementSampler
@@ -94,13 +94,13 @@ class MyPrimitiveParams:
         self.R = R if R is not None else self._init_R()
 
         # Linear layer: any values associated to linear layer
-        # Matrices are generated/provided as list[list[int]], and transformed to list[list[FieldElement]] via map_to_field
-        self.M = map_to_field(M if M is not None else self._init_M(), self.to_field)
+        # Matrices are generated/provided as list[list[int]], and transformed to list[list[FieldElement]] via map_nested
+        self.M = map_nested(M if M is not None else self._init_M(), self.to_field)
         self.M_inv = invert_matrix(self.M)
 
         # Round constants: any values associated to round constant addition
-        # Round constants are typically generated/provided as list[int], and transformed to list[FieldElement] via map_to_field
-        self.rcons = map_to_field(rcons if rcons is not None else self._init_rcons(), self.to_field)
+        # Round constants are typically generated/provided as list[int], and transformed to list[FieldElement] via map_nested
+        self.rcons = map_nested(rcons if rcons is not None else self._init_rcons(), self.to_field)
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers to provide common framework for all functions
@@ -169,14 +169,14 @@ class MyPrimitiveParams:
         """Return a t x t MDS matrix over F.
         TODO: replace with your primitive's matrix construction (e.g. a circulant
         search, a Cauchy matrix, or a fixed low-addition family). If you follow a generic
-        derivation strategy that might be reusable by other primitives, implement it in 
-        utils.py and import. Example: cauchy_mds_matrix(self.p, self.t)."""
+        derivation strategy that might be reusable by other primitives, implement it in
+        utils/matrix.py and import. Example: cauchy_mds_matrix(self.p, self.t)."""
         return simple_circulant_matrix(self.t)
 
     def _init_rcons(self):
         """Return the round constants as an R x t grid (one t-vector per round, indexed rcons[r]).
         TODO: replace with your primitive's round-constant derivation (e.g. from the
         digits of pi, a fixed seed, or a counter-based construction). Many primitives use
-        a FieldElementSampler from utils.py to implement reproducible round constant generation.
+        a FieldElementSampler from utils/sampler.py to implement reproducible round constant generation.
         This placeholder is a deterministic counter grid -- valid in shape, not cryptographic."""
         return [[r * self.t + i + 1 for i in range(self.t)] for r in range(self.R)]

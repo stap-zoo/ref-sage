@@ -1,4 +1,11 @@
-from utils import add_to_start, replace_start
+"""Modes of operation built on top of a permutation.
+
+Turns a fixed-width permutation into a hash/compression function: sponge constructions
+(plain, SAFE, padding-injected, Hirose), compression functions (Davies-Meyer, Jive),
+the padding rules they use, and rate/capacity/digest derivation.
+"""
+
+from utils.matrix import add_to_start, replace_start
 
 # ---------------------------------------------------------------------------
 # Rate / capacity / digest derivation

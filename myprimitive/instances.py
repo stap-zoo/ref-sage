@@ -3,15 +3,15 @@
 # Concrete, named parameter sets for MyPrimitive.
 #
 # Each entry is a ready-to-use MyPrimitiveParams instance pinned to a specific
-# field from fields.py. To goal is that for a specific instance, every consumer 
+# field from utils/field.py. To goal is that for a specific instance, every consumer 
 # agrees on the exact same parameters.
 #
 # Naming convention: <PRIMITIVE>_<FIELD>_<VARIANT>, e.g. MYPRIMITIVE_GOLDILOCKS_T2.
 # ---------------------------------------------------------------------------
 
-from fields import GOLDILOCKS         # predefined field; add a new Field to fields.py if yours is missing
+from utils.field import GOLDILOCKS         # predefined field; add a new Field to utils/field.py if yours is missing
 from myprimitive.params import MyPrimitiveParams
-from utils import circulant
+from utils.matrix import circulant
 
 # ---------------------------------------------------------------------------
 # GOLDILOCKS field instances  (p = 2^64 - 2^32 + 1)

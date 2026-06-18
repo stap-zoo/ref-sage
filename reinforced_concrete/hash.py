@@ -15,8 +15,9 @@
 # ---------------------------------------------------------------------------
 
 from reinforced_concrete.params import ReinforcedConcreteParams
-from utils import matvecmul, vecadd, vecsub, mixed_radix_decompose, mixed_radix_compose, add_to_start
-from modes import compress_davies_meyer, hash_sponge, pad_zero
+from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
+from utils.lut import mixed_radix_decompose, mixed_radix_compose
+from utils.mode import compress_davies_meyer, hash_sponge, pad_zero
 
 class ReinforcedConcrete:
     # ---------------------------------------------------------------------------

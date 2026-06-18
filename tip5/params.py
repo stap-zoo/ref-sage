@@ -22,9 +22,11 @@ from math import gcd
 from sage.all import GF, Integer
 
 # Custom imports
-from utils import invert_LUT, XOFFieldElementSampler, tip5_mds_matrix, map_to_field, invert_matrix, rpo_mds_matrix
-from modes import derive_rate_capacity_digest
-from fields import GOLDILOCKS
+from utils.lut import invert_LUT
+from utils.sampler import XOFFieldElementSampler
+from utils.matrix import tip5_mds_matrix, map_nested, invert_matrix, rpo_mds_matrix
+from utils.mode import derive_rate_capacity_digest
+from utils.field import GOLDILOCKS
 
 
 class Tip5Params:
@@ -91,11 +93,11 @@ class Tip5Params:
         self.R = R
 
         # Affine layer
-        self.M = map_to_field(M if M is not None else self._init_M(), self.to_field)
+        self.M = map_nested(M if M is not None else self._init_M(), self.to_field)
         self.M_inv = invert_matrix(self.M)
 
         # Round constants
-        self.rcons = map_to_field(rcons if rcons is not None else self._init_rcons(), self.to_field)
+        self.rcons = map_nested(rcons if rcons is not None else self._init_rcons(), self.to_field)
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers

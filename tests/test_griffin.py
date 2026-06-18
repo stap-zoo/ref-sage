@@ -21,8 +21,8 @@ from griffin.instances import (
     GRIFFIN_GOLDILOCKS_T8,
     GRIFFIN_GOLDILOCKS_T12,
 )
-from utils import matvecmul
-from fields import BN254_SCALAR, BLS12_381_SCALAR, ST, GOLDILOCKS
+from utils.matrix import matvecmul
+from utils.field import BN254_SCALAR, BLS12_381_SCALAR, ST, GOLDILOCKS
 
 INSTANCES = [
     ("BN254_T3", GRIFFIN_BN254_T3),

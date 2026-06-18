@@ -12,8 +12,8 @@
 # ---------------------------------------------------------------------------
 
 from marvellous.params import RescueParams, RescuePrimeParams, RescuePrimeOptimizedParams
-from utils import matvecmul, vecadd, vecsub, add_to_start, replace_start
-from modes import pad_one, pad_fixed_length, pad_one_conditional, hash_sponge
+from utils.matrix import matvecmul, vecadd, vecsub, add_to_start, replace_start
+from utils.mode import pad_one, pad_fixed_length, pad_one_conditional, hash_sponge
 
 
 class Rescue:
@@ -59,9 +59,11 @@ class Rescue:
         return matvecmul(self.M_inv, state)
 
     def nonlinear_layer(self, state: list, r: int) -> list:
-        return [x ** self.alpha for x in state]
+        # In all Rescue papers, the forward S-box is called pi_0: x -> x^alpha
+        return [x ** self.alpha for x in state] 
 
     def nonlinear_layer_inv(self, state: list, r: int) -> list:
+        # In all Rescue papers, the backward S-box is called pi_1: x -> x^(1/alpha)
         return [x ** self.alpha_inv for x in state]
 
     # ---------------------------------------------------------------------------
@@ -88,6 +90,7 @@ class Rescue:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
+        # Each round of Rescue is a double SPN round, yielding: (BF)(BF)...(BF)(C)
         state = self._pre_rounds(state)
         for r in range(2 * self.R): # Rescue uses double rounds
             if r % 2 == 0: # (B) part of double-round
@@ -161,6 +164,7 @@ class RescuePrime(Rescue):
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
+        # Each round of RescuePrime is a double SPN round, yielding: (FB)(FB)...(FB)
         state = self._pre_rounds(state)
         for r in range(2 * self.R): # RescuePrime uses double rounds
             if r % 2 == 0: # (F) part of double-round
@@ -203,6 +207,7 @@ class RescuePrimeOptimized(RescuePrime):
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
+        # Each round of RescuePrime is a double SPN round, yielding: (FB)(FB)...(FB)
         state = self._pre_rounds(state)
         for r in range(2 * self.R): # RescuePrimeOptimized uses double rounds
             if r % 2 == 0: # (F) part of double-round
@@ -236,7 +241,7 @@ class RescuePrimeOptimized(RescuePrime):
 
         NOTE: the spec's sponge has the capacity in the first c state elements
         and the rate in the remaining r elements (overwritten on each absorption,
-        squeeze taken from the rate part). modes.hash_sponge instead places the
+        squeeze taken from the rate part). mode.hash_sponge instead places the
         rate first and the capacity last, i.e. capacity and rate are exchanged
         relative to the spec."""
         padded_data, was_aligned = pad_one_conditional(data, self.r, self.to_field)
@@ -264,3 +269,10 @@ class RescuePrimeOptimized(RescuePrime):
 # ---------------------------------------------------------------------------
 
 # TODO
+# _sbox_P3 takes 3 elements, returns 3 elements
+# coeffs and coeffs_inv for sbox
+# irreducible polynomial (coeffs) f_mod for field extension
+
+# skipbox used in overwritten nonlinear layer
+# 
+# inversion not supported (for now) 

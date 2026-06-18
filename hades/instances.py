@@ -1,4 +1,4 @@
-from fields import BN254_SCALAR, BLS12_381_SCALAR, ST, GOLDILOCKS, MERSENNE31
+from utils.field import BN254_SCALAR, BLS12_381_SCALAR, ST, GOLDILOCKS, MERSENNE31
 
 from hades.params import PoseidonParams, Poseidon2Params, NeptuneParams
 

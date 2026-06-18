@@ -20,8 +20,9 @@ from marvellous.instances import (
     RESCUE_GOLDILOCKS_T12,
 )
 
-from utils import vandermonde_mds_matrix, XOFFieldElementSampler
-from fields import BLS12_381_SCALAR, GOLDILOCKS
+from utils.matrix import vandermonde_mds_matrix
+from utils.sampler import XOFFieldElementSampler
+from utils.field import BLS12_381_SCALAR, GOLDILOCKS
 
 INSTANCES = [
     ("BLS12_T3", RESCUE_BLS12_T3),

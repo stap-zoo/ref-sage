@@ -19,9 +19,9 @@ from myprimitive.instances import (
     MYPRIMITIVE_GOLDILOCKS_T3,
     # ... import every named instance you want covered
 )
-from utils import matvecmul, is_mds
+from utils.matrix import matvecmul, is_mds
 from recommendations import ParamRecommendationWarning
-from fields import GOLDILOCKS
+from utils.field import GOLDILOCKS
 
 INSTANCES = [
     ("GOLDILOCKS_T3", MYPRIMITIVE_GOLDILOCKS_T3),

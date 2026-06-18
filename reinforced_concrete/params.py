@@ -20,8 +20,10 @@ from math import gcd
 from sage.all import GF, Integer, PolynomialRing, is_prime, previous_prime
 
 # Custom imports
-from utils import XOFFieldElementSampler, invert_LUT, map_to_field, invert_matrix, mixed_radix_decompose
-from modes import derive_rate_capacity_digest
+from utils.sampler import XOFFieldElementSampler
+from utils.lut import invert_LUT, mixed_radix_decompose
+from utils.matrix import map_nested, invert_matrix
+from utils.mode import derive_rate_capacity_digest
 
 
 class ReinforcedConcreteParams:
@@ -78,8 +80,8 @@ class ReinforcedConcreteParams:
         self.alpha = alpha
         self.alpha_inv = alpha_inv if alpha_inv is not None else self._init_alpha_inv()
         COEFFS = COEFFS if COEFFS is not None else self._init_COEFFS()
-        self.a_coeffs = map_to_field(COEFFS[0], self.to_field)
-        self.b_coeffs = map_to_field(COEFFS[1], self.to_field)
+        self.a_coeffs = map_nested(COEFFS[0], self.to_field)
+        self.b_coeffs = map_nested(COEFFS[1], self.to_field)
 
         # Non-linear layers: Bars
         self.si = list(si)
@@ -99,11 +101,11 @@ class ReinforcedConcreteParams:
         self.R = R_pre + R_bars + R_post
 
         # Affine layer
-        self.M = map_to_field(M if M is not None else self._init_M(), self.to_field)
+        self.M = map_nested(M if M is not None else self._init_M(), self.to_field)
         self.M_inv = invert_matrix(self.M)
 
         # Round constants
-        self.rcons = map_to_field(rcons if rcons is not None else self._init_rcons(), self.to_field)
+        self.rcons = map_nested(rcons if rcons is not None else self._init_rcons(), self.to_field)
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers

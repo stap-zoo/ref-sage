@@ -37,8 +37,8 @@
 # ---------------------------------------------------------------------------
 
 from myprimitive.params import MyPrimitiveParams
-from utils import matvecmul, vecadd, vecsub, add_to_start
-from modes import hash_sponge, pad_zero
+from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
+from utils.mode import hash_sponge, pad_zero
 
 
 class MyPrimitive:
@@ -206,7 +206,7 @@ class MyPrimitive:
     # Hash modes
     #
     # Thin wrappers that turn the permutation into a hash / compression function.
-    # The mode logic and padding rules live in modes.py and are shared across
+    # The mode logic and padding rules live in utils/mode.py and are shared across
     # primitives; these methods just call into it with this primitive's
     # parameters. Not every primitive defines every mode.
     # ---------------------------------------------------------------------------

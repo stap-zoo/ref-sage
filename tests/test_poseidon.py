@@ -24,7 +24,7 @@ from hades.instances import (
     POSEIDON_MERSENNE_T16,
     POSEIDON_MERSENNE_T24,
 )
-from fields import BN254_SCALAR
+from utils.field import BN254_SCALAR
 from hades_reference import POSEIDON as REF, CIRCOM_BN254_T3_RC_ROW0
 
 INSTANCES = [

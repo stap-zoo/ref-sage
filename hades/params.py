@@ -23,18 +23,9 @@ from math import gcd
 from sage.all import GF, Integer
 
 # Custom imports
-from utils import (
-    LFSRFieldElementSampler,
-    XOFFieldElementSampler,
-    cauchy_mds_matrix,
-    circulant,
-    m4_to_block_circulant_matrix,
-    dl_m44_84_matrix,
-    ones_plus_diag_matrix,
-    map_to_field,
-    invert_matrix,
-)
-from modes import derive_rate_capacity_digest
+from utils.sampler import LFSRFieldElementSampler, XOFFieldElementSampler
+from utils.matrix import cauchy_mds_matrix, circulant, m4_to_block_circulant_matrix, dl_m44_84_matrix, ones_plus_diag_matrix, map_nested, invert_matrix
+from utils.mode import derive_rate_capacity_digest
 
 # ---------------------------------------------------------------------------
 # Grain LFSR settings (used by Poseidon/Poseidon2)
@@ -173,11 +164,11 @@ class HadesParams:
         # Round constants are drawn first (Poseidon's Grain MDS continues the same stream),
         # then the matrices. `rcons` is the engine grid the round loop indexes (>= R rows;
         # Neptune adds one for its trailing whitening constant).
-        self.rcons = map_to_field(rcons if rcons is not None else self._init_rcons(), self.to_field)
+        self.rcons = map_nested(rcons if rcons is not None else self._init_rcons(), self.to_field)
         if len(self.rcons) < self.R:
             raise ValueError(f"Expected at least {self.R} round-constant rows, got {len(self.rcons)}")
-        self.M_ext = map_to_field(M_ext if M_ext is not None else self._init_M_ext(), self.to_field)
-        self.M_int = map_to_field(M_int if M_int is not None else self._init_M_int(), self.to_field)
+        self.M_ext = map_nested(M_ext if M_ext is not None else self._init_M_ext(), self.to_field)
+        self.M_int = map_nested(M_int if M_int is not None else self._init_M_int(), self.to_field)
         self.M_ext_inv = invert_matrix(self.M_ext)
         self.M_int_inv = invert_matrix(self.M_int)
 
@@ -384,7 +375,7 @@ class NeptuneParams(HadesParams):
         self.lm_alpha_inv = pow(self.lm_alpha, -1, p - 1)
         self.lm_beta = self.to_field(1)
         self.lm_gamma = self.to_field(self.sampler.next_nonzero())
-        self.lm_M = map_to_field([[2,1],[1,3]], self.to_field)
+        self.lm_M = map_nested([[2,1],[1,3]], self.to_field)
         self.lm_M_inv = invert_matrix(self.lm_M)
 
     def _init_sampler(self):

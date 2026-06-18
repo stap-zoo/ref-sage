@@ -7,8 +7,8 @@
 # *applies* the parameters (no derivation/validation).
 # ---------------------------------------------------------------------------
 
-from utils import matvecmul, vecadd, vecsub, add_to_start
-from modes import hash_sponge, pad_zero, compress_davies_meyer
+from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
+from utils.mode import hash_sponge, pad_zero, compress_davies_meyer
 import warnings
 from recommendations import ModeRecommendationWarning
 from hades.params import PoseidonParams, Poseidon2Params, NeptuneParams

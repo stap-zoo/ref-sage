@@ -14,8 +14,9 @@
 # ---------------------------------------------------------------------------
 
 from monolith.params import MonolithParams
-from utils import matvecmul, vecadd, vecsub, mixed_radix_decompose, mixed_radix_compose, add_to_start
-from modes import compress_davies_meyer, hash_sponge_safe, pad_zero
+from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
+from utils.lut import mixed_radix_decompose, mixed_radix_compose
+from utils.mode import compress_davies_meyer, hash_sponge_safe, pad_zero
 
 class Monolith:
     def __init__(self, params: MonolithParams):

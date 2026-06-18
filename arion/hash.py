@@ -6,8 +6,8 @@
 # ---------------------------------------------------------------------------
 
 from arion.params import ArionParams
-from utils import matvecmul, vecadd, vecsub, add_to_start
-from modes import hash_sponge, pad_zero
+from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
+from utils.mode import hash_sponge, pad_zero
 
 
 class Arion:

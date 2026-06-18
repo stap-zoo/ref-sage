@@ -3,13 +3,13 @@
 # Concrete, named parameter sets for Reinforced Concrete.
 #
 # Each entry is a ready-to-use ReinforcedConcreteParams instance pinned to a
-# specific field from fields.py, so every consumer agrees on the exact same
+# specific field from utils/field.py, so every consumer agrees on the exact same
 # parameters. Naming convention: RC_<FIELD>_<VARIANT>.
 # ---------------------------------------------------------------------------
 
-from fields import BLS12_381_SCALAR, BN254_SCALAR, ST
+from utils.field import BLS12_381_SCALAR, BN254_SCALAR, ST
 from reinforced_concrete.params import ReinforcedConcreteParams
-from utils import circulant
+from utils.matrix import circulant
 
 # ---------------------------------------------------------------------------
 # BLS12-381 instance

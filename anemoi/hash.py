@@ -7,8 +7,8 @@
 # ---------------------------------------------------------------------------
 
 from anemoi.params import AnemoiParams
-from utils import matvecmul, vecadd, vecsub
-from modes import compress_jive, hash_sponge_hirose, pad_one
+from utils.matrix import matvecmul, vecadd, vecsub
+from utils.mode import compress_jive, hash_sponge_hirose, pad_one
 
 
 class Anemoi:
