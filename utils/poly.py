@@ -225,7 +225,8 @@ def power_map_coordinate_polys(Fn, alpha, debug=False):
 
 def _debug_check_power_map(Fn, alpha, coord_polys, n, Fp):
     """Sanity check: evaluate the coordinate polynomials on a random field
-    element and confirm they reproduce x^alpha computed natively in Fn."""
+    element and confirm they reproduce x^alpha computed natively in Fn, and
+    that the AoS and SoA evaluators agree with the Sage-polynomial evaluation."""
     print("-- power_map_coordinate_polys --")
     print("Fn =", Fn, "\ndegree =", n, "\nalpha =", alpha)
     if n > 1:
@@ -234,7 +235,15 @@ def _debug_check_power_map(Fn, alpha, coord_polys, n, Fp):
     el = Fn.random_element()
     # element's coordinates, padded to length n (high zero coords may be dropped)
     coords = list(el.list()) + [Fp(0)] * (n - len(el.list()))
+
+    # 1) evaluate via the Sage polynomials directly
     evaluated = [poly(*coords) for poly in coord_polys]
+
+    # 2) evaluate via the AoS and SoA forms (same coordinates as input point)
+    aos_forms = [poly_to_aos(poly) for poly in coord_polys]
+    soa_forms = [poly_to_soa(poly) for poly in coord_polys]
+    eval_aos_res = [eval_aos(terms, coords)          for terms        in aos_forms]
+    eval_soa_res = [eval_soa(coeffs, exps, coords)   for (coeffs, exps) in soa_forms]
 
     if n == 1:
         native = el**alpha
@@ -244,8 +253,11 @@ def _debug_check_power_map(Fn, alpha, coord_polys, n, Fp):
         native        = univ_from_list(Fp_X.gen(), (el**alpha).list())
         reconstructed = univ_from_list(Fp_X.gen(), evaluated)
 
-    print("g          =", el)
-    print("g^alpha    =", native,        "(native field arithmetic)")
-    print("g^alpha    =", reconstructed, "(via coordinate polynomials)")
-    print("match      :", native == reconstructed)
+    print("g            =", el)
+    print("g^alpha      =", native,        "(native field arithmetic)")
+    print("g^alpha      =", reconstructed, "(via coordinate polynomials)")
+    print("match (poly) :", native == reconstructed)
+    # AoS / SoA evaluators must reproduce the Sage-poly coordinate values
+    print("match (AoS)  :", eval_aos_res == evaluated)
+    print("match (SoA)  :", eval_soa_res == evaluated)
     print('-' * 60)
