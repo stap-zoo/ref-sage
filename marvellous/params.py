@@ -23,7 +23,7 @@ from math import ceil, floor, gcd, log
 from sage.all import GF, Integer, matrix, vector, flatten
 
 # Custom imports
-from utils.matrix import vandermonde_mds_matrix, rpo_mds_matrix, map_nested, invert_matrix
+from utils.matrix import vandermonde_mds_matrix, rpo_mds_matrix, map_nested, invert_matrix, circulant
 from utils.sampler import XOFFieldElementSampler
 from utils.complexities import gb_comp
 from utils.mode import derive_rate_capacity_digest
@@ -305,7 +305,7 @@ class XHashParams(RescuePrimeOptimizedParams):
         ----------
         cpolys  : coordinate polynomials in Fp[a,b,c] describing power map in Fp[x]/fmod; derived if not given
                   cpolys[i] is the i-th coordinate polynomial, given as a list of terms tuple[int, tuple[int]],
-                  where each term-tuple stores the coefficient and the exponent tuple
+                  where each term-tuple stores the coefficient and the exponent tuple. AoS format, see utils.poly.
         fmod    : coefficients (non-sparse) of degree 3 irreducible polynomial in Fp[x] used for field extension
         skipbox : for aggressive versions [mod,rem] such that forward S-Box i is skipped whenever i % mod = rem
         kwargs  : arguments passed to parent class
@@ -313,6 +313,16 @@ class XHashParams(RescuePrimeOptimizedParams):
         super().__init__(**kwargs)
         self._init_sbox_P3(cpolys, fmod)
         self.skipbox = skipbox
+        self.skipbox_idx = [] if self.skipbox is None else [i for i in range(self.t) if i % self.skipbox[0] == self.skipbox[1]]
+
+    @property
+    def n_rcons(self) -> int:
+        """Number of round-constant rows the permutation consumes.
+
+        Every other round is a double SPN round, so the permutation indexes constants over
+        range(int(1.5*R)) plus one final row (index -1) used by _post_rounds: int(1.5*R) + 1.
+        """
+        return int(1.5 * self.R) + 1
 
     def _parameter_sanitization(self):
         if gcd(self.alpha, self.p - 1) != 1:
@@ -320,10 +330,10 @@ class XHashParams(RescuePrimeOptimizedParams):
 
         if (len(self.M) != self.t) or not all(len(row) == self.t for row in self.M):
             raise ValueError("M must be txt matrix")
-        
-        # Every other round is a double round (1.5 * R), plus final round constant addition
-        if (len(self.rcons) < 1.5 * self.R + 1) or not all (len(ci) == self.t for ci in self.rcons):
-            raise ValueError(f"round constants size wrong. Expected at least (1.5*R+1)xt = {(1.5*self.R+1)*self.t}, got {len(flatten(self.rcons))}")
+
+        # At least n_rcons rows are consumed by the permutation (extra supplied rows are allowed).
+        if (len(self.rcons) < self.n_rcons) or not all(len(ci) == self.t for ci in self.rcons):
+            raise ValueError(f"round constants size wrong. Expected at least n_rcons x t = {self.n_rcons} x {self.t}, got {len(self.rcons)} x t")
 
         # If not XHash12 of XHash24, undocumented variant
         if not ((self.p == GOLDILOCKS.p and self.t == 12) or (self.p == MERSENNE31.p and self.t == 24)):
@@ -332,11 +342,21 @@ class XHashParams(RescuePrimeOptimizedParams):
 
     def _init_M(self) -> list[list[int]]:
         if self.t == 12:
-            return rpo_mds_matrix(self.t) 
-        elif t == 24:
-            return circulant(row=[185870542, 2144994796, 1696461115, 215190769, 930115258, 766567118, 2003379079, 1770558586, 1779722644, 434368282, 289154277, 1979813463,1436360233, 1342944808, 63026005, 903393155, 1512525948, 105409451, 1072974295, 979558870, 436105640, 2126764826, 1981550821, 636196459, 645360517, 412540024, 1649351985, 1485803845, 53244687, 719457988, 270924307, 82564914])
+            return rpo_mds_matrix(self.t)
+        elif self.t == 24:
+            # Efficient MDS from a Reed-Solomon code, given as a 32x32 circulant; the t=24
+            # instance uses its top-left t x t block (matching the truncation the provided-M
+            # path applies via map_nested).
+            full = circulant(row=[185870542, 2144994796, 1696461115, 215190769, 930115258, 766567118, 2003379079, 1770558586, 1779722644, 434368282, 289154277, 1979813463,1436360233, 1342944808, 63026005, 903393155, 1512525948, 105409451, 1072974295, 979558870, 436105640, 2126764826, 1981550821, 636196459, 645360517, 412540024, 1649351985, 1485803845, 53244687, 719457988, 270924307, 82564914])
+            return [row[:self.t] for row in full[:self.t]]
         else:
-            raise NotImplementedError("No matrix derivation strategy implemented for t = {self.t}")
+            raise NotImplementedError(f"No matrix derivation strategy implemented for t = {self.t}")
+
+    def _init_rcons(self) -> list[list[int]]:
+        # Same seed scheme as RPO, but generate exactly n_rcons rows (driven by the round
+        # structure) rather than the parent's 2*R.
+        seed = f"{self.LABEL}({self.p},{self.t},{self.c},{self.kappa})".encode("ascii")
+        return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_256", sampling="mod").grid(self.n_rcons, self.t)
 
     def _init_R(self) -> int:
         """Round number derivation, including 50% security margin"""
@@ -360,6 +380,10 @@ class XHashParams(RescuePrimeOptimizedParams):
         # Map coefficients of cpolys into field, if given
         cpolys_given = None
         if cpolys is not None:
+            if len(cpolys) != 3:
+                raise ValueError(f"Wrong number of coordinate polynomials. Expected len(cpolys) = 3, got {len(cpolys)}")
+            if not all(len(exps) == 3 for poly in cpolys for coeff, exps in poly):
+                raise ValueError("All exponent tuples must have length 3")
             cpolys_given = [map_coeffs(p, self.to_field) for p in cpolys]
         
         # Set coordinate polynomials

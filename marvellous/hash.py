@@ -11,9 +11,10 @@
 # three SPN rounds). The parameter R counts the primitive "rounds", not the SPN rounds.
 # ---------------------------------------------------------------------------
 
-from marvellous.params import RescueParams, RescuePrimeParams, RescuePrimeOptimizedParams
+from marvellous.params import RescueParams, RescuePrimeParams, RescuePrimeOptimizedParams, XHashParams
 from utils.matrix import matvecmul, vecadd, vecsub, add_to_start, replace_start
 from utils.mode import pad_one, pad_fixed_length, pad_one_conditional, hash_sponge
+from utils.poly import eval_aos
 
 
 class Rescue:
@@ -151,6 +152,12 @@ class RescuePrime(Rescue):
     def __init__(self, params: RescuePrimeParams):
         super().__init__(params)
 
+    def _pre_rounds(self, state: list) -> list:
+        return state
+
+    def _pre_rounds_inv(self, state: list) -> list:
+        return state
+
     def _post_rounds(self, state: list) -> list:
         return state # no final round constant addition (reordered layers)
 
@@ -268,11 +275,126 @@ class RescuePrimeOptimized(RescuePrime):
 # XHASH
 # ---------------------------------------------------------------------------
 
-# TODO
-# _sbox_P3 takes 3 elements, returns 3 elements
-# coeffs and coeffs_inv for sbox
-# irreducible polynomial (coeffs) f_mod for field extension
+class XHash(RescuePrimeOptimized):
 
-# skipbox used in overwritten nonlinear layer
-# 
-# inversion not supported (for now) 
+    def __init__(self, params: XHashParams):
+        super().__init__(params)
+
+        # Nonlinear layer (old)
+        # For aggressive version with S-box skipping, [mod,rem] != None
+        # Indices to be skipped saved in skipbox_idx
+        self.skipbox = params.skipbox
+        self.skipbox_idx = params.skipbox_idx
+
+        # Nonlinear layer (new)
+        # Coordinate polynomials of power map over degree-3 extension field (with modulus fmod), 
+        # saved in AoS format (see utils.poly)
+        self.cpolys = params.cpolys
+        self.fmod = params.fmod
+
+        # TODO make sure t is divisible by 3
+    
+    def _pre_rounds(self, state: list) -> list:
+        return state
+
+    def _pre_rounds_inv(self, state: list) -> list:
+        return state
+
+    def _post_rounds(self, state: list) -> list:
+        # final matrix multiplication and round constant addition
+        state = self.linear_layer(state, -1)
+        return self.constant_addition(state, -1)
+
+    def _post_rounds_inv(self, state: list) -> list:
+        state = self.constant_addition_inv(state, -1)
+        return self.linear_layer_inv(state, -1)
+    
+    def _sbox_P3(self, point) -> list:
+        """Forward XHash S-box pi_2 over the degree-3 extension field.
+
+        `point` is a list of 3 field coordinates [x0, x1, x2] representing one
+        extension-field element x0 + x1*X + x2*X^2. Applying x -> x^alpha in the
+        extension is precomputed as 3 coordinate polynomials (self.cpolys, in AoS
+        form); evaluating each at `point` gives the 3 output coordinates.
+        """
+        return [eval_aos(terms, point) for terms in self.cpolys]
+
+
+    def _sbox_P3_inv(self, point) -> list:
+        """Inverse XHash S-box pi_2^{-1} (x -> x^{1/alpha}) over the extension.
+
+        `point` is a list of 3 field coordinates [x0, x1, x2], mirroring _sbox_P3.
+
+        TODO Not implemented: the inverse power map would need its own coordinate
+        polynomials (self.cpolys_inv), derived from the inverse exponent 1/alpha mod (p^3 - 1).
+        """
+        raise NotImplementedError("Inversion of power map over extension field not implemented.")
+        # return [eval_aos(terms, point) for terms in self.cpolys_inv]
+
+
+    def nonlinear_layer(self, state: list, r: int) -> list:
+        """Apply the round-`r` non-linear layer to the full state of t elements.
+
+        The schedule mixes two S-boxes by round index:
+        - every third round (r % 3 == 2): the XHash extension S-box pi_2, applied to each consecutive triple of state elements;
+        - all other rounds: the standard Rescue forward S-box x -> x^alpha, applied element-wise, skipping the positions in self.skipbox_idx.
+        Returns a new state list of the same length t.
+        """
+        if r % 3 == 2:
+            # XHash S-box pi_2: group the state into consecutive triples [0,1,2], [3,4,5], ... , 
+            # apply the extension S-box to each triple, and flatten the 3-coordinate outputs back into a single flat state list.
+            return [coord for i in range(0, self.t, 3) for coord in self._sbox_P3(state[i:i+3])]
+        else:
+            # Standard Rescue forward S-box pi_1: x -> x^alpha, skipping indices in skipbox_idx
+            return [(state[i] if i in self.skipbox_idx else state[i] ** self.alpha)
+                    for i in range(self.t)] 
+
+    def nonlinear_layer_inv(self, state: list, r: int) -> list:
+        if r % 3 == 2:
+            return [coord for i in range(0, self.t, 3) for coord in self._sbox_P3_inv(state[i:i+3])]
+        else:
+            # Standard Rescue backward S-box pi_1: x -> x^(1/alpha), skipping indices in skipbox_idx
+            return [(state[i] if i in self.skipbox_idx else state[i] ** self.alpha_inv) for i in range(self.t)]
+
+    def permutation(self, state: list) -> list:
+        """Similar to RescuePrime, but order of application of AffineLayer and nonlinear_layer/nonlinear_layer_inv switched."""
+        if len(state) != self.t:
+            raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
+
+        # Every other round of XHASH is a double SPN round, yielding: (FB)(P3)...(FB)(P3)(MC)
+        state = self._pre_rounds(state)
+        for r in range(int(1.5 * self.R)):
+            if r % 3 == 0: # (F) part of double-round
+                state = self.constant_addition(state, r)
+                state = self.linear_layer(state, r)
+                state = self.nonlinear_layer(state, r)
+            elif r % 3 == 1: # (B) part of double-round
+                state = self.linear_layer(state, r)
+                state = self.constant_addition(state, r)
+                state = self.nonlinear_layer_inv(state, r)
+            else: # (P3) part - no linear layer since nonlinear layer does some mixing
+                state = self.constant_addition(state, r)
+                state = self.nonlinear_layer(state, r)
+        return self._post_rounds(state)
+
+    def permutation_inv(self, state: list) -> list:
+        if len(state) != self.t:
+            raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
+
+        # Every other round of XHASH is a double SPN round, yielding: (FB)(P3)...(FB)(P3)(MC)
+        state = self._pre_rounds(state)
+        for r in reversed(range(int(1.5 * self.R))):
+            if r % 3 == 0: # (F^-1) part of double-round
+                state = self.nonlinear_layer_inv(state, r)
+                state = self.linear_layer_inv(state, r)
+                state = self.constant_addition_inv(state, r)
+            elif r % 3 == 1: # (B^-1) part of double-round
+                state = self.nonlinear_layer(state, r)
+                state = self.constant_addition_inv(state, r)
+                state = self.linear_layer_inv(state, r)
+            else: # (P3^-1) part
+                state = self.nonlinear_layer_inv(state, r)
+                state = self.constant_addition_inv(state, r)
+        return self._post_rounds(state)
+        
+    # TODO check modes of operation
