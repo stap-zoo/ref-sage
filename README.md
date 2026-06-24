@@ -405,6 +405,14 @@ Each primitive lives in its own folder and follows a common layout:
       <td>6 + 38 / 6 + 42</td>
       <td>sponge</td>
     </tr>
+    <tr>
+      <td rowspan="1"><a href="https://eprint.iacr.org/2026/1129">pSquare-hash</a></td>
+      <td><code>PSQUAREHASH_MERSENNE_T16/T24</code></td>
+      <td>Mersenne31 (31 bit)</td>
+      <td>16 / 24</td>
+      <td>52</td>
+      <td>sponge, Davies–Meyer 2-to-1</td>
+    </tr>
   </tbody>
 </table>
 
