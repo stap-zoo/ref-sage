@@ -21,7 +21,7 @@ from monolith.instances import (
     LUT_8,
     LUT_7,
 )
-from monolith.params import compute_lut_8, compute_lut_7
+from monolith.params import monolith_lut8, monolith_lut7
 
 INSTANCES = [
     ("M31_T16", MONOLITH_M31_T16),
@@ -107,10 +107,10 @@ KAT_IDS = [
 # ---------------------------------------------------------------------------
 
 def test_lut_8_matches_computed():
-    assert LUT_8 == compute_lut_8()
+    assert LUT_8 == monolith_lut8
 
 def test_lut_7_matches_computed():
-    assert LUT_7 == compute_lut_7()
+    assert LUT_7 == monolith_lut7
 
 # ---------------------------------------------------------------------------
 # 4.1 KAT

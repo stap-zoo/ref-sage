@@ -9,7 +9,7 @@
 
 from utils.field import MERSENNE31, GOLDILOCKS
 from utils.matrix import circulant
-from monolith.params import MonolithParams, compute_lut_8, compute_lut_7
+from monolith.params import MonolithParams
 
 # TODO implement matrix generation strategies
 

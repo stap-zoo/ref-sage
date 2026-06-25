@@ -20,7 +20,7 @@ from sage.all import GF, Integer
 
 # Custom imports
 from utils.sampler import XOFFieldElementSampler
-from utils.lut import invert_LUT
+from utils.lut import invert_LUT, monolith_lut8, monolith_lut7
 from utils.matrix import map_nested, invert_matrix
 from utils.mode import derive_rate_capacity_digest
 
@@ -130,9 +130,9 @@ class MonolithParams:
         LUTs = {}
         for s in set(self.si):
             if s == 256:
-                LUTs[s] = compute_lut_8()
+                LUTs[s] = monolith_lut8
             elif s == 128:
-                LUTs[s] = compute_lut_7()
+                LUTs[s] = monolith_lut7
             else:
                 raise NotImplementedError(f"Bar LUT generation not implemented for base si={s}.")
         return LUTs
@@ -153,23 +153,3 @@ class MonolithParams:
     def _init_M(self):
         # TODO implement
         raise NotImplementedError("MDS matrix generation not implemented for Monolith.")
-
-
-def compute_lut_8() -> list[int]:
-    table = []
-    for x in range(256):
-        l1 = ((x & 0x80) >> 7) | ((x & 0x7F) << 1)
-        l2 = ((x & 0xC0) >> 6) | ((x & 0x3F) << 2)
-        l3 = ((x & 0xE0) >> 5) | ((x & 0x1F) << 3)
-        tmp = (x ^ ((~l1) & l2 & l3)) & 0xFF
-        table.append(((tmp & 0x80) >> 7) | ((tmp & 0x7F) << 1))
-    return table
-
-def compute_lut_7() -> list[int]:
-    table = []
-    for x in range(128):
-        l1 = ((x >> 6) | (x << 1)) & 0x7F
-        l2 = ((x >> 5) | (x << 2)) & 0x7F
-        tmp = (x ^ ((~l1) & l2)) & 0x7F
-        table.append(((tmp >> 6) | (tmp << 1)) & 0x7F)
-    return table
