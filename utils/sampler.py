@@ -112,13 +112,14 @@ class XOFFieldElementSampler(FieldElementSampler):
     which read t bytes per element instead of ceil(p.bit_length()/8)+1.
     """
 
-    def __init__(self, *, seed: bytes, p: int, sampling: str, xof: str = "shake_128", n_bytes: int = None):
+    def __init__(self, *, seed: bytes, p: int, sampling: str, xof: str = "shake_128", n_bytes: int = None, endianess="little"):
         super().__init__(p)
         if xof not in XOFS:
             raise ValueError(f"Unknown XOF: {xof}. Use one of {sorted(XOFS)}.")
         self._xof = XOFS[xof](seed)
         self._n_bytes_override = n_bytes
         self.set_sampling(sampling)        # sets n_bytes / mask (+ reduce_mod)
+        self.endianess = endianess
 
         self._pos = 0
         self._size = max(1024, self.n_bytes * 64)
@@ -156,7 +157,7 @@ class XOFFieldElementSampler(FieldElementSampler):
         raw = bytearray(self._buf[self._pos:self._pos + self.n_bytes])
         self._pos += self.n_bytes
         raw[-1] &= self.mask
-        return int.from_bytes(raw, "little")
+        return int.from_bytes(raw, self.endianess)
 
 
 class LFSRFieldElementSampler(FieldElementSampler):

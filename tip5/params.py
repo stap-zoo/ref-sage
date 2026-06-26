@@ -76,13 +76,15 @@ class Tip5Params:
         self.t = t
         self.kappa = kappa
 
+        # Montgomery constant
+        self.mont_R = self.to_field(2**64) # Montgomery constant
+        self.mont_R_inv = self.mont_R ** (-1)
+
         # Non-linear layer: split-and-lookup S-boxes (S) and power maps (T)
         self.u = u
         self.si = [256] * 8  # byte decomposition of a 64-bit value
         self.LUT = LUT if LUT is not None else self._init_LUT()
         self.LUT_inv = invert_LUT(self.LUT)
-        self.mont_R = self.to_field(2**64)
-        self.mont_R_inv = self.mont_R ** (-1)
         self.alpha = alpha if alpha is not None else self._init_alpha()
         self.alpha_inv = alpha_inv if alpha_inv is not None else self._init_alpha_inv()
 
@@ -161,12 +163,13 @@ class Tip5Params:
         by 2^-64 so that adding them in Montgomery form is cheap.
         Matches round constants of Rust reference implementation from
         https://github.com/Neptune-Crypto/twenty-first."""
-        mont_R_inv = pow(2**64, -1, self.p)
+        mont_R_inv = self.from_field(self.mont_R_inv)
+        label = self.LABEL.encode("ascii")
         rcons = []
         for r in range(self.R):
             row = []
             for i in range(self.t):
-                sampler = XOFFieldElementSampler(seed=self.LABEL.encode("ascii") + bytes([i + r * self.t]), p=self.p, xof="blake3", sampling="mod", n_bytes=self.t)
+                sampler = XOFFieldElementSampler(seed=label + bytes([i + r * self.t]), p=self.p, xof="blake3", sampling="mod", n_bytes=self.t)
                 row.append((sampler.next() * mont_R_inv) % self.p)
             rcons.append(row)
         return rcons

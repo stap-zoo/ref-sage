@@ -129,9 +129,9 @@ class MonolithParams:
         # Bar lookup tables respectively.
         LUTs = {}
         for s in set(self.si):
-            if s == 256:
+            if s == 2**8: # 256
                 LUTs[s] = monolith_lut8
-            elif s == 128:
+            elif s == 2**7: # 128
                 LUTs[s] = monolith_lut7
             else:
                 raise NotImplementedError(f"Bar LUT generation not implemented for base si={s}.")
