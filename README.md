@@ -413,6 +413,14 @@ Each primitive lives in its own folder and follows a common layout:
       <td>52</td>
       <td>sponge, Davies–Meyer 2-to-1</td>
     </tr>
+    <tr>
+      <td rowspan="1"><a href="https://eprint.iacr.org/2019/397">GMiMC</a></td>
+      <td><code>GMIMC_BN254_T3</code> / <code>GMIMC_BLS12_T3</code></td>
+      <td>BN254 (254 bit) / BLS12-381 (255 bit)</td>
+      <td>3</td>
+      <td>228</td>
+      <td>sponge</td>
+    </tr>
   </tbody>
 </table>
 
