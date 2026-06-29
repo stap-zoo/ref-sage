@@ -112,6 +112,7 @@ class pSquareHashParams:
     # ---------------------------------------------------------------------------
     # Derivation helpers (defaults for the optional parameters)
     # ---------------------------------------------------------------------------
+    
     def _init_M(self) -> list[list[int]]:
         mat = [[0 for _ in range(self.t)] for _ in range(self.t)]
         for i in range(0, self.t // 2):
@@ -136,7 +137,7 @@ class pSquareHashParams:
             mat_io[self.t // 2 + i][i] += 2
         return mat_io
 
-    def _init_constants(self):
+    def _init_rcons(self):
         # Deterministic constant generation via SHAKE256, so coeffs_g/coeffs_h/rcons
         # can be reproduced from (p, t, R) instead of relying on Sage's unseeded random_element().
         seed = f"pSquare-hash({self.p},{self.t},{self.R})".encode("ascii")
