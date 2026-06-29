@@ -7,7 +7,7 @@
 
 from psquarehash.params import pSquareHashParams
 from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
-from utils.mode import hash_sponge, pad_zero
+from utils.mode import compress_davies_meyer, hash_sponge_safe, pad_zero
 
 
 class pSquareHash:
@@ -132,7 +132,7 @@ class pSquareHash:
     def hash_sponge(self, data: list) -> list:
         padded_data, _ = pad_zero(data, self.r, self.to_field)
         IV = [self.to_field(len(data))] + [self.F.zero()] * (self.c - 1)
-        return hash_sponge(
+        return hash_sponge_safe(
             perm=self.permutation,
             data=padded_data,
             state_size=self.t,
