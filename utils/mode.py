@@ -118,15 +118,13 @@ def hash_sponge(perm, data: list, state_size: int, rate: int, capacity: int, dig
         raise ValueError("data must be padded to a multiple of the rate")
     if digest_size > rate:
         raise NotImplementedError(...)
-    if len(data) > rate:
-        raise NotImplementedError(...)
 
     blocks = [data[i:i + rate] for i in range(0, len(data), rate)]
 
     # Initialize state
     state = [to_field(0)] * rate + list(IV)
 
-    # Sponge - absorption phase
+    # Sponge - absorption phase (handles any number of rate-sized blocks)
     for block in blocks:
         state = absorb(state, block)
         state = perm(state)
@@ -149,8 +147,6 @@ def hash_sponge_pi(perm, data: list, state_size: int, rate: int, capacity: int, 
         raise NotImplementedError(...)
     if IV[-1] != to_field(digest_size):
         raise ValueError("Invalid domain separation: digest_size must be encoded as last element in IV")
-    if len(data) > rate:
-        raise NotImplementedError(...)
 
     blocks = [data[i:i + rate] for i in range(0, len(data), rate)]
 
