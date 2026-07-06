@@ -4,7 +4,8 @@ Usage:
     sage -python export_kat.py <construction>
 
 where <construction> is one of:
-    gmimc, neptune, rescue-prime, anemoi, arion
+    gmimc, neptune, poseidon, poseidon2, rescue-prime, anemoi, arion, griffin,
+    skyscraper
 
 """
 
@@ -13,7 +14,7 @@ import importlib
 import json
 import warnings
 
-from utils.field import BN254_SCALAR, BN254_BASE, BLS12_381_SCALAR, BLS12_381_BASE
+from utils.field import BN254_SCALAR, BLS12_381_SCALAR
 
 # ---------------------------------------------------------------------------
 # Construction registry: key -> (hash module, hash class, instances module,
@@ -24,9 +25,13 @@ from utils.field import BN254_SCALAR, BN254_BASE, BLS12_381_SCALAR, BLS12_381_BA
 CONSTRUCTIONS = {
     "gmimc":        ("gmimc.hash",      "GMiMC",       "gmimc.instances",      "GMIMC_"),
     "neptune":      ("hades.hash",      "Neptune",     "hades.instances",      "NEPTUNE_"),
+    "poseidon":     ("hades.hash",      "Poseidon",    "hades.instances",      "POSEIDON_"),
+    "poseidon2":    ("hades.hash",      "Poseidon2",   "hades.instances",      "POSEIDON2_"),
     "rescue-prime": ("marvellous.hash", "RescuePrime", "marvellous.instances", "RESCUE_PRIME_"),
     "anemoi":       ("anemoi.hash",     "Anemoi",      "anemoi.instances",     "ANEMOI_"),
     "arion":        ("arion.hash",      "Arion",       "arion.instances",      "ARION_"),
+    "griffin":      ("griffin.hash",    "Griffin",     "griffin.instances",    "GRIFFIN_"),
+    "skyscraper":   ("skyscraper.hash", "Skyscraper",  "skyscraper.instances", "SKYSCRAPER_"),
 }
 
 # Aliases accepted on the command line (all normalised to the keys above).
@@ -36,8 +41,10 @@ ALIASES = {
     "rescue_prime": "rescue-prime",
 }
 
-# Primes we emit vectors for: the scalar and base fields of BN254 and BLS12-381.
-ALLOWED_PRIMES = {BN254_SCALAR.p, BN254_BASE.p, BLS12_381_SCALAR.p, BLS12_381_BASE.p}
+# Primes we emit vectors for: only the BN254 and BLS12-381 scalar fields, the
+# ones natively arithmetizable in a circuit over those curves. Base fields (and
+# other reference primes) would need non-native emulation and are excluded.
+ALLOWED_PRIMES = {BN254_SCALAR.p, BLS12_381_SCALAR.p}
 
 
 def emit(vectors, modes_seen, label, mode, h, inp_ints, produce):
