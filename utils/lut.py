@@ -3,8 +3,12 @@
 Helpers used by primitives whose S-box is realised as a small lookup table over digits
 (e.g. Reinforced Concrete, Monolith, Tip5, Skyscraper): mixed-radix decomposition of a
 field element into per-digit values and back, inversion of a lookup table, and the
-small-n Chi (Bar) S-boxes those constructions share.
+small-n Chi (Bar) S-boxes those constructions share. Also the power-residue tables of
+Polocolo, whose lookup is keyed by field-element values rather than dense digit indices.
 """
+
+import random
+from utils.sampler import XOFFieldElementSampler
 
 # ---------------------------------------------------------------------------
 # Mixed-radix decomposition
@@ -142,8 +146,131 @@ def compose(*fns):
         return x
     return composed
 
-monolith_phi8 = compose(invertible_phi_from_landscape(8, "001*", xi={3}), crotl(8, 1)) # "*001" in Table A.1
-monolith_lut8 = [monolith_phi8(x) for x in range(1 << 8)]
+# The concrete Monolith Bar tables built from these constructions live at module
+# level of monolith/params.py (MONOLITH_LUT8 / MONOLITH_LUT7): pinned design data
+# belongs to the owning primitive, only the generic builders stay here.
 
-monolith_phi7 = compose(invertible_phi_from_landscape(7, "01*",  xi={2}), crotl(7, 1)) # "*01" in Table A.1
-monolith_lut7 = [monolith_phi7(x) for x in range(1 << 7)]
+
+# ---------------------------------------------------------------------------
+# Power-residue S-box tables (Polocolo)
+#
+# Polocolo's S-box (https://eprint.iacr.org/2025/926, Section 3.2) is
+#
+#     S(0) = 0,   S(x) = x^{-1} * T[ x^((p-1)/m) ]
+#
+# for m | p-1 (a power of two in the recommended instances), a generator g of
+# F_p^*, and a permutation sigma of {0, ..., m-1}. Writing x = g^(qm+r), the
+# m-th power residue x^((p-1)/m) = g^(r(p-1)/m) takes only m+1 distinct values
+# (including 0), and the table maps each of them:
+#
+#     T[0] = 0,   T[ g^(r(p-1)/m) ] = g^((m+1)r + sigma(r)).
+#
+# Unlike the other LUT-based constructions in this file (Reinforced Concrete,
+# Monolith, Tip5), whose tables are indexed by small DENSE integers (per-digit
+# values, 7/8-bit chunks) and therefore stored as list[int], Polocolo's T is
+# indexed by the power-residue VALUE (m+1 scattered full-size field elements).
+# There is no dense index without an extra value->index map (a discrete log
+# restricted to m values, i.e. exactly the lookup being avoided), so the tables
+# here are dicts {int: int}; the reference implementation uses a
+# HashMap<Scalar, Scalar> for the same reason.
+# ---------------------------------------------------------------------------
+
+def power_residue_sigma(m: int, p: int, g: int, method: str, seed: str = None) -> list[int]:
+    """Derive Polocolo's S-box permutation sigma of {0, ..., m-1} from a seed
+    (default "Polocolo-{m}", the seed of the official instances).
+
+    Two derivation variants exist in the Polocolo reference material
+    (https://github.com/KAIST-CryptLab/Polocolo), and they DISAGREE:
+
+    method="shuffle" : sigma = Fisher-Yates shuffle of [0, ..., m-1] driven by Python's
+                       random.Random(seed) (version-stable string seeding). This is what
+                       the lookup tables shipped with the reference implementation
+                       (plain/polocolo_luts.rs) were actually generated with: it
+                       reproduces all six shipped tables (m = 32 ... 1024) exactly.
+    method="hashtape": the derivation published in the authors' param_gen.sage.
+                       Rejection-sample distinct values from a SHAKE128 tape seeded with
+                       `seed`, and retry the whole permutation until sigma satisfies the
+                       two interpolation conditions of the paper (Section 4.2, checked
+                       via sigma_conditions_hold; requires `p` and `g`). This does NOT
+                       reproduce the shipped tables.
+
+    Every shipped sigma also happens to satisfy the paper's
+    interpolation conditions (asserted in the test suite), so the two variants
+    differ only in which valid sigma they pick.
+    """
+    if seed is None:
+        seed = f"Polocolo-{m}"
+
+    if method == "shuffle":
+        rng = random.Random(seed)
+        while True:
+            sigma = list(range(m))
+            rng.shuffle(sigma)
+            if sigma_conditions_hold(p, g, m, sigma):
+                return sigma
+
+    if method == "hashtape":
+        tape = XOFFieldElementSampler(seed=seed.encode(), p=p, sampling="bitshift", endianess="big", xof="shake_128")
+        while True:
+            sigma, seen = [], set()
+            while len(sigma) < m:
+                num = tape.randint(m)
+                if num in seen:
+                    continue
+                seen.add(num)
+                sigma.append(num)
+            if sigma_conditions_hold(p, g, m, sigma):
+                return sigma
+
+    raise ValueError(f"Unknown sigma derivation method: {method}. Use 'shuffle' or 'hashtape'.")
+
+
+def sigma_conditions_hold(p: int, g: int, m: int, sigma: list[int]) -> bool:
+    """The two constraints Polocolo imposes on sigma (Section 4.2): the functions
+
+        f: g^r          -> g^(rm + sigma(r))        (r = 0, ..., m-1)
+        h: g^(r(p-1)/m) -> g^(r(m+1) + sigma(r))    (r = 0, ..., m-1)
+
+    must both interpolate to polynomials of maximum degree m-1 with ALL m
+    coefficients non-zero (dense), so that the S-box has no low-degree /
+    sparse univariate structure an algebraic attack could exploit."""
+    from sage.all import GF
+
+    F = GF(p)
+    g = F(g)
+    R = F["x"]
+    k = (p - 1) // m
+
+    f_points = [(g ** r, g ** (r * m + sigma[r])) for r in range(m)]
+    f_poly = R.lagrange_polynomial(f_points)
+    if f_poly.degree() != m - 1 or 0 in f_poly.coefficients(sparse=False):
+        return False
+
+    h_points = [(g ** (r * k), g ** (r * (m + 1) + sigma[r])) for r in range(m)]
+    h_poly = R.lagrange_polynomial(h_points)
+    if h_poly.degree() != m - 1 or 0 in h_poly.coefficients(sparse=False):
+        return False
+
+    return True
+
+
+def power_residue_lut(p: int, g: int, m: int, sigma: list[int]) -> dict[int, int]:
+    """The forward S-box table T with T[0] = 0 and T[g^(r(p-1)/m)] = g^((m+1)r + sigma(r)),
+    so that S(x) = x^{-1} * T[x^((p-1)/m)] (and S(0) = 0)."""
+    k = (p - 1) // m
+    T = {0: 0}
+    for r in range(m):
+        T[pow(g, r * k, p)] = pow(g, (m + 1) * r + sigma[r], p)
+    return T
+
+
+def power_residue_lut_inv(p: int, g: int, m: int, sigma: list[int]) -> dict[int, int]:
+    """The table T_inv of the INVERSE S-box, which has the same shape as S itself:
+    S^{-1}(y) = y^{-1} * T_inv[y^((p-1)/m)]. For y = S(g^(qm+r)) = g^(-qm + rm + sigma(r))
+    the power residue of y is g^(sigma(r)(p-1)/m), and y^{-1} * g^((m+1)r + sigma(r))
+    recovers g^(qm+r) = x, so T_inv[g^(sigma(r)(p-1)/m)] = g^((m+1)r + sigma(r))."""
+    k = (p - 1) // m
+    T_inv = {0: 0}
+    for r in range(m):
+        T_inv[pow(g, sigma[r] * k, p)] = pow(g, (m + 1) * r + sigma[r], p)
+    return T_inv
