@@ -1,13 +1,13 @@
 # hash.py
 # ---------------------------------------------------------------------------
-# pSquare-hash: the permutation (round function) and the hash modes built on it.
+# GMiMC: the permutation (round function) and the hash modes built on it.
 #
-# Constructed from a fully-specified pSquare-hashParams object. 
+# Constructed from a fully-specified GMiMCParams object.
 # ---------------------------------------------------------------------------
 
 from gmimc.params import GMiMCParams
 from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
-from utils.mode import hash_sponge, pad_zero
+from utils.mode import hash_sponge, pad_zero, compress_davies_meyer
 
 
 class GMiMC:
@@ -62,7 +62,7 @@ class GMiMC:
         return matvecmul(self.M_inv, state)
 
     # ---------------------------------------------------------------------------
-    # Pre-/post-round steps (pSquare-hash does no work outside the loop: identities)
+    # Pre-/post-round steps (GMiMC does no work outside the loop: identities)
     # ---------------------------------------------------------------------------
 
     def _pre_rounds(self, state: list) -> list:

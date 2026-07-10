@@ -10,11 +10,14 @@
 #   4.5 Misc         -- validation/errors, Jive output size
 # ---------------------------------------------------------------------------
 
+import warnings
+
 import pytest
 
 from anemoi.hash import Anemoi
 from anemoi.params import AnemoiParams
 from utils.field import GOLDILOCKS
+from recommendations import ParamRecommendationWarning
 from anemoi.instances import (
     ANEMOI_BLS12_381_BASE_T2,
     ANEMOI_BLS12_381_BASE_T4,
@@ -530,3 +533,21 @@ def test_jive_output_size(name, params):
     x1 = [prim.F.random_element() for _ in range(prim.l)]
     x2 = [prim.F.random_element() for _ in range(prim.l)]
     assert len(prim.compress_2_to_1(x1, x2)) == prim.l
+
+
+# ---------------------------------------------------------------------------
+# 4.5 (cont.) Warnings
+# ---------------------------------------------------------------------------
+
+def test_toy_field_warns():
+    with pytest.warns(ParamRecommendationWarning):
+        AnemoiParams(p=101, g=2, l=1, r=1, c=1, d=1)  # tiny field
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_recommended_instance_no_warning(name, params):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ParamRecommendationWarning)
+        AnemoiParams(p=params.p, g=int(params.from_field(params.g)), l=params.l,
+                     alpha=params.alpha, R=params.R,
+                     r=params.r, c=params.c, d=params.d)

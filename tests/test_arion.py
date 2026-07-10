@@ -6,9 +6,11 @@
 #   4.1 KATs         -- fixed input/output vectors (permutation)
 #   4.2 Roundtrip    -- permutation_inv undoes permutation (and per-layer)
 #   4.3 Consistency  -- determinism, distinct inputs -> distinct outputs, sizes
-#   4.4 Algebraic    -- (TODO) component identities / symbolic degree
-#   4.5 Misc         -- validation/errors, reproducibility
+#   4.4 Algebraic    -- MDS check, derivation vs. pinned instance
+#   4.5 Misc         -- validation/errors, warnings, reproducibility
 # ---------------------------------------------------------------------------
+
+import warnings
 
 import pytest
 
@@ -16,6 +18,8 @@ from arion.hash import Arion
 from arion.params import ArionParams
 from arion.instances import ARION_BLS12_T3
 from utils.field import BLS12_381_SCALAR
+from utils.matrix import matvecmul, is_mds
+from recommendations import ParamRecommendationWarning
 
 INSTANCES = [
     ("BLS12_T3", ARION_BLS12_T3),
@@ -23,7 +27,7 @@ INSTANCES = [
 
 # ---------------------------------------------------------------------------
 # 4.1 Known-answer test vectors (computed with this implementation; constants
-# are deterministically derived via ArionParams._init_constants, so this KAT is
+# are deterministically derived via ArionParams._init_cons, so this KAT is
 # self-reproducible from (p, t, R, alpha1, alpha2) alone)
 # ---------------------------------------------------------------------------
 
@@ -102,21 +106,68 @@ def test_sponge_output_size(name, params):
 
 
 # ---------------------------------------------------------------------------
-# 4.4 Algebraic
+# 4.4 Algebraic / derivation
 # ---------------------------------------------------------------------------
 
-# TODO: add component/symbolic-degree algebraic tests for Arion (e.g. an MDS
-# check on M and a degree-growth bound through GTDS) once settled.
+# TODO: add a symbolic degree-growth bound through GTDS once settled.
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_matrix_is_mds_and_invertible(name, params):
+    assert is_mds(params.M, params.F)
+    prod = [matvecmul(params.M, col) for col in zip(*params.M_inv)]  # columns of M_inv
+    ident = [[params.F.one() if i == j else params.F.zero() for j in range(params.t)] for i in range(params.t)]
+    assert [list(c) for c in zip(*prod)] == ident
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_generated_matches_instance(name, params):
+    # Rebuilding the params without M / constants must reproduce the pinned instance.
+    derived = ArionParams(p=params.p, t=params.t, R=params.R,
+                          alpha1=params.alpha1, alpha2=params.alpha2,
+                          r=params.r, c=params.c, d=params.d)
+    assert derived.M == params.M
+    assert derived.rcons == params.rcons
+    assert derived.coeffs_g == params.coeffs_g
+    assert derived.coeffs_h == params.coeffs_h
+
+
+@pytest.mark.skip(reason="_init_rounds is a stub (round number derivation not implemented for Arion)")
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_rounds_derivation_matches_instance(name, params):
+    derived = ArionParams(p=params.p, t=params.t,
+                          alpha1=params.alpha1, alpha2=params.alpha2,
+                          r=params.r, c=params.c, d=params.d)  # R omitted -> _init_rounds
+    assert derived.R == params.R
 
 
 # ---------------------------------------------------------------------------
-# 4.5 Misc: validation, reproducibility
+# 4.5 Misc: validation, warnings, reproducibility
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
     prim = Arion(ARION_BLS12_T3)
     with pytest.raises(ValueError):
         prim.permutation([prim.F.zero()] * (prim.t + 1))
+
+
+def test_alpha_must_be_permutation():
+    # An explicit alpha1 not coprime with p-1 must be rejected by params.
+    with pytest.raises(ValueError):
+        ArionParams(p=BLS12_381_SCALAR.p, t=3, R=6, alpha1=4, alpha2=257, r=2, c=1, d=2)
+
+
+def test_toy_field_warns():
+    with pytest.warns(ParamRecommendationWarning):
+        ArionParams(p=101, t=3, R=6, r=2, c=1, d=1)  # tiny field
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_recommended_instance_no_warning(name, params):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ParamRecommendationWarning)
+        ArionParams(p=params.p, t=params.t, R=params.R,
+                    alpha1=params.alpha1, alpha2=params.alpha2,
+                    r=params.r, c=params.c, d=params.d)
 
 
 def test_constants_reproducible():

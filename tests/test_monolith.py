@@ -6,9 +6,11 @@
 #   4.1 KATs         -- fixed input/output vectors (permutation)
 #   4.2 Roundtrip    -- permutation_inv undoes permutation (and per-layer)
 #   4.3 Consistency  -- determinism, distinct inputs -> distinct outputs, sizes
-#   4.4 Algebraic    -- lookup-table generation
-#   4.5 Misc         -- validation/errors, compression availability
+#   4.4 Algebraic    -- lookup-table generation, derivation vs. pinned instance
+#   4.5 Misc         -- validation/errors, warnings, compression availability
 # ---------------------------------------------------------------------------
+
+import warnings
 
 import pytest
 
@@ -21,7 +23,8 @@ from monolith.instances import (
     LUT_8,
     LUT_7,
 )
-from monolith.params import monolith_lut8, monolith_lut7
+from monolith.params import MonolithParams, MONOLITH_LUT8, MONOLITH_LUT7
+from recommendations import ParamRecommendationWarning
 
 INSTANCES = [
     ("M31_T16", MONOLITH_M31_T16),
@@ -107,10 +110,10 @@ KAT_IDS = [
 # ---------------------------------------------------------------------------
 
 def test_lut_8_matches_computed():
-    assert LUT_8 == monolith_lut8
+    assert LUT_8 == MONOLITH_LUT8
 
 def test_lut_7_matches_computed():
-    assert LUT_7 == monolith_lut7
+    assert LUT_7 == MONOLITH_LUT7
 
 # ---------------------------------------------------------------------------
 # 4.1 KAT
@@ -204,3 +207,77 @@ def test_compress_not_defined(name, params):
     x2 = [prim.F.random_element() for _ in range(half)]
     with pytest.raises(ValueError):
         prim.compress_2_to_1(x1, x2)
+
+
+# ---------------------------------------------------------------------------
+# 4.4 (cont.) Derivation vs. pinned instance
+# ---------------------------------------------------------------------------
+
+def _instance_ints(params):
+    """The instance's M and rcons lowered back to plain integers (constructor format)."""
+    M = [[int(params.from_field(x)) for x in row] for row in params.M]
+    # Strip the trailing zero padding row the constructor appends.
+    rcons = [[int(params.from_field(x)) for x in row] for row in params.rcons[:-1]]
+    return M, rcons
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_rcons_generated_matches_instance(name, params):
+    # Rebuilding the params without rcons must reproduce the pinned instance
+    # (M and LUTs are supplied: their generation is still a stub).
+    M, _ = _instance_ints(params)
+    derived = MonolithParams(p=params.p, t=params.t, R=params.R, u=params.u,
+                             si=params.si, LUTs=params.LUTs, M=M,
+                             r=params.r, c=params.c, d=params.d)
+    assert derived.rcons == params.rcons
+
+
+@pytest.mark.skip(reason="_init_mat is a stub (MDS matrix generation not implemented for Monolith)")
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_matrix_derivation_matches_instance(name, params):
+    derived = MonolithParams(p=params.p, t=params.t, R=params.R, u=params.u,
+                             si=params.si, LUTs=params.LUTs,
+                             r=params.r, c=params.c, d=params.d)  # M omitted -> _init_mat
+    assert derived.M == params.M
+
+
+@pytest.mark.skip(reason="_init_rounds is a stub (round number derivation not implemented for Monolith)")
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_rounds_derivation_matches_instance(name, params):
+    M, _ = _instance_ints(params)
+    derived = MonolithParams(p=params.p, t=params.t, u=params.u,
+                             si=params.si, LUTs=params.LUTs, M=M,
+                             r=params.r, c=params.c, d=params.d)  # R omitted -> _init_rounds
+    assert derived.R == params.R
+
+
+# ---------------------------------------------------------------------------
+# 4.5 (cont.) Warnings, reproducibility
+# ---------------------------------------------------------------------------
+
+def test_toy_field_warns():
+    # 13-bit Mersenne prime; M supplied because _init_mat is a stub.
+    with pytest.warns(ParamRecommendationWarning):
+        MonolithParams(p=8191, t=4, R=3, u=2, si=[128, 128],
+                       M=[[1, 2, 3, 4], [4, 1, 2, 3], [3, 4, 1, 2], [2, 3, 4, 1]],
+                       r=2, c=2, d=2)
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_recommended_instance_no_warning(name, params):
+    M, _ = _instance_ints(params)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ParamRecommendationWarning)
+        MonolithParams(p=params.p, t=params.t, R=params.R, u=params.u,
+                       si=params.si, LUTs=params.LUTs, M=M,
+                       r=params.r, c=params.c, d=params.d)
+
+
+def test_constants_reproducible():
+    # Same parameters -> identical derived constants.
+    M, _ = _instance_ints(MONOLITH_GOLDILOCKS_T8)
+    kwargs = dict(p=MONOLITH_GOLDILOCKS_T8.p, t=8, R=6, u=4, si=[256] * 8,
+                  M=M, r=4, c=4, d=4)
+    a = MonolithParams(**kwargs)
+    b = MonolithParams(**kwargs)
+    assert a.rcons == b.rcons

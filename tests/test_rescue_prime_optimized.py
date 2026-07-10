@@ -10,13 +10,17 @@
 #   4.5 Misc         -- validation/errors
 # ---------------------------------------------------------------------------
 
+import warnings
+
 import pytest
 
 from marvellous.hash import RescuePrimeOptimized
+from marvellous.params import RescuePrimeOptimizedParams
 from marvellous.instances import (
     RPO_GOLDILOCKS_T12,
     RPO_GOLDILOCKS_T16,
 )
+from recommendations import ParamRecommendationWarning
 
 INSTANCES = [
     ("GOLDILOCKS_T12", RPO_GOLDILOCKS_T12),
@@ -52,24 +56,26 @@ RPO_T16_KATS = [
 ]
 
 
-# RPO KATs disabled: mode.hash_sponge places the rate first and the capacity
+# RPO KATs skipped: mode.hash_sponge places the rate first and the capacity
 # last in the state, whereas the RPO spec has the capacity first and the rate
 # last (capacity and rate exchanged), so hash_sponge does not currently
 # reproduce these vectors.
-# @pytest.mark.parametrize("input_seq,expected", RPO_T12_KATS)
-# def test_rpo_t12_kat(input_seq, expected):
-#     prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
-#     inp = [prim.to_field(x) for x in input_seq]
-#     out = prim.hash_sponge(inp)
-#     assert [prim.from_field(x) for x in out] == expected
+@pytest.mark.skip(reason="hash_sponge is rate-first; the RPO spec is capacity-first, so the reference vectors are not reproduced yet")
+@pytest.mark.parametrize("input_seq,expected", RPO_T12_KATS)
+def test_rpo_t12_kat(input_seq, expected):
+    prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
+    inp = [prim.to_field(x) for x in input_seq]
+    out = prim.hash_sponge(inp)
+    assert [prim.from_field(x) for x in out] == expected
 
 
-# @pytest.mark.parametrize("input_seq,expected", RPO_T16_KATS)
-# def test_rpo_t16_kat(input_seq, expected):
-#     prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T16)
-#     inp = [prim.to_field(x) for x in input_seq]
-#     out = prim.hash_sponge(inp)
-#     assert [prim.from_field(x) for x in out] == expected
+@pytest.mark.skip(reason="hash_sponge is rate-first; the RPO spec is capacity-first, so the reference vectors are not reproduced yet")
+@pytest.mark.parametrize("input_seq,expected", RPO_T16_KATS)
+def test_rpo_t16_kat(input_seq, expected):
+    prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T16)
+    inp = [prim.to_field(x) for x in input_seq]
+    out = prim.hash_sponge(inp)
+    assert [prim.from_field(x) for x in out] == expected
 
 
 # ---------------------------------------------------------------------------
@@ -124,10 +130,24 @@ def test_permutation_distinct_inputs(name, params):
 
 
 # ---------------------------------------------------------------------------
-# 4.5 Misc: validation
+# 4.5 Misc: validation, warnings
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
     prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
     with pytest.raises(ValueError):
         prim.permutation([prim.F.zero()] * (prim.t + 1))
+
+
+def test_toy_field_warns():
+    # t=12 because the RPO circulant matrix is only defined for t in {12, 16}.
+    with pytest.warns(ParamRecommendationWarning):
+        RescuePrimeOptimizedParams(p=101, t=12, r=8, c=4, d=4)  # tiny field
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_recommended_instance_no_warning(name, params):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ParamRecommendationWarning)
+        RescuePrimeOptimizedParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
+                                   r=params.r, c=params.c, d=params.d)

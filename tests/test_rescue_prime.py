@@ -10,6 +10,8 @@
 #   4.5 Misc         -- validation/errors
 # ---------------------------------------------------------------------------
 
+import warnings
+
 import pytest
 
 from marvellous.hash import RescuePrime
@@ -24,6 +26,8 @@ from marvellous.instances import (
 from utils.matrix import vandermonde_mds_matrix
 from utils.sampler import XOFFieldElementSampler
 from utils.field import GOLDILOCKS
+from marvellous.params import RescuePrimeParams
+from recommendations import ParamRecommendationWarning
 
 INSTANCES = [
     ("BLS12_T3", RESCUE_PRIME_BLS12_T3),
@@ -203,3 +207,16 @@ def test_invalid_state_size():
     prim = RescuePrime(RESCUE_PRIME_BLS12_T3)
     with pytest.raises(ValueError):
         prim.permutation([prim.F.zero()] * (prim.t + 1))
+
+
+def test_toy_field_warns():
+    with pytest.warns(ParamRecommendationWarning):
+        RescuePrimeParams(p=101, t=3, r=2, c=1, d=1)  # tiny field
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_recommended_instance_no_warning(name, params):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ParamRecommendationWarning)
+        RescuePrimeParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
+                          r=params.r, c=params.c, d=params.d)

@@ -30,9 +30,9 @@ class pSquareHashParams:
         self,
         p:           int,
         t:           int,
-        R:           int,
+        R:           int = None,
         M:           list[list[int]] = None,
-        M_IO:           list[list[int]] = None,
+        M_IO:        list[list[int]] = None,
         rcons:       list[list[int]] = None,
         r:           int = None,
         c:           int = None,
@@ -44,10 +44,10 @@ class pSquareHashParams:
         ----------
         p             : field characteristic (prime)
         t             : permutation state size (branches)
-        R             : number of rounds
-        M             : matrix (txt)
-        M_IO          : Input/Output matrix (txt)
-        rcons         : Rxt affine round constants; generated via _init_constants if not provided
+        R             : number of rounds; derived via _init_rounds if not provided (not yet implemented)
+        M             : matrix (txt); generated via _init_mat if not provided
+        M_IO          : Input/Output matrix (txt); generated via _init_mat_IO if not provided
+        rcons         : Rxt affine round constants; generated via _init_cons if not provided
         r             : rate (number of outer state elements absorbed/squeezed per sponge step);
                         derived from kappa/t via derive_rate_capacity_digest if not provided
         c             : capacity (number of inner state elements); derived if not provided
@@ -64,20 +64,21 @@ class pSquareHashParams:
         self.t = t
         self.kappa = kappa
 
-        # Rounds (set before _init_constants, whose derivation depends on R)
-        self.R = R
+        # Rounds (set before _init_cons, whose derivation depends on R)
+        self.R = R if R is not None else self._init_rounds()
 
         # Hash modes
         self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Affine layer
-        self.M = map_nested(M if M is not None else self._init_M(), self.to_field)
+        self.M = map_nested(M if M is not None else self._init_mat(), self.to_field)
         self.M_inv = invert_matrix(self.M)
-        self.M_IO = map_nested(M_IO if M_IO is not None else self._init_M_IO(), self.to_field)
+        self.M_IO = map_nested(M_IO if M_IO is not None else self._init_mat_IO(), self.to_field)
         self.M_IO_inv = invert_matrix(self.M_IO)
-        self.rcons = map_nested(rcons if rcons is not None else self._init_rcons(), self.to_field)
-        if len(self.rcons) < self.R:
-            raise ValueError(f"Expected at least {self.R} round-constant rows, got {len(self.rcons)}")
+        self.rcons = map_nested(rcons if rcons is not None else self._init_cons(), self.to_field)
+
+        # Parameter sanitization: validate the fully-constructed (stored/derived) values
+        self._parameter_sanitization()
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers
@@ -109,11 +110,29 @@ class pSquareHashParams:
         if field_bits < 31:
             warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
 
+    def _parameter_sanitization(self):
+        """Validate the fully-constructed parameter object (stored/derived values):
+        hard checks raise, recommendation deviations warn (ParamRecommendationWarning)."""
+
+        # --- Hard checks (must always hold) ---
+        if len(self.M) != self.t or any(len(row) != self.t for row in self.M):
+            raise ValueError(f"M must be a {self.t} x {self.t} matrix")
+        if len(self.M_IO) != self.t or any(len(row) != self.t for row in self.M_IO):
+            raise ValueError(f"M_IO must be a {self.t} x {self.t} matrix")
+        if len(self.rcons) < self.R or any(len(row) != self.t // 2 for row in self.rcons):
+            raise ValueError(f"rcons must hold at least {self.R} rows of {self.t // 2} constants each")
+
     # ---------------------------------------------------------------------------
     # Derivation helpers (defaults for the optional parameters)
     # ---------------------------------------------------------------------------
-    
-    def _init_M(self) -> list[list[int]]:
+
+    def _init_rounds(self) -> int:
+        """Derive the round number from the target security level kappa.
+        TODO: implement the round-number criterion of the pSquare paper
+        (https://eprint.iacr.org/2026/1129); until then R must be passed explicitly."""
+        raise NotImplementedError("Error: Not implemented -- round number derivation for pSquare-hash")
+
+    def _init_mat(self) -> list[list[int]]:
         mat = [[0 for _ in range(self.t)] for _ in range(self.t)]
         for i in range(0, self.t // 2):
             mat[i][self.t // 2 + i] += 1
@@ -128,7 +147,7 @@ class pSquareHashParams:
             mat[i + 1][self.t // 2 - 1] += 1
         return mat
 
-    def _init_M_IO(self) -> list[list[int]]:
+    def _init_mat_IO(self) -> list[list[int]]:
         mat_io = [[0 for _ in range(self.t)] for _ in range(self.t)]
         for i in range(0, self.t):
             mat_io[i][i] += 1
@@ -137,8 +156,8 @@ class pSquareHashParams:
             mat_io[self.t // 2 + i][i] += 2
         return mat_io
 
-    def _init_rcons(self):
-        # Deterministic constant generation via SHAKE256, so coeffs_g/coeffs_h/rcons
+    def _init_cons(self):
+        # Deterministic constant generation via SHAKE256, so the round constants
         # can be reproduced from (p, t, R) instead of relying on Sage's unseeded random_element().
         seed = f"pSquare-hash({self.p},{self.t},{self.R})".encode("ascii")
 

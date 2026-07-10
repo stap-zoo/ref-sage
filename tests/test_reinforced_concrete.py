@@ -6,14 +6,18 @@
 #   4.1 KATs         -- fixed input/output vectors (permutation)
 #   4.2 Roundtrip    -- permutation_inv undoes permutation (and per-layer)
 #   4.3 Consistency  -- determinism, distinct inputs -> distinct outputs, sizes
-#   4.4 Algebraic    -- (TODO)
-#   4.5 Misc         -- validation/errors
+#   4.4 Algebraic    -- derivation vs. pinned instance
+#   4.5 Misc         -- validation/errors, warnings, reproducibility
 # ---------------------------------------------------------------------------
+
+import warnings
 
 import pytest
 
 from reinforced_concrete.hash import ReinforcedConcrete
+from reinforced_concrete.params import ReinforcedConcreteParams
 from reinforced_concrete.instances import RC_BLS12_T3, RC_BN254_T3, RC_ST_T3
+from recommendations import ParamRecommendationWarning
 
 INSTANCES = [
     ("BN254_T3", RC_BN254_T3),
@@ -143,10 +147,86 @@ def test_sponge_output_size(name, params):
 
 
 # ---------------------------------------------------------------------------
-# 4.5 Misc: validation
+# 4.4 Algebraic: derivation vs. pinned instance
+# ---------------------------------------------------------------------------
+
+def _instance_ints(params):
+    """The instance's M and rcons lowered back to plain integers (constructor format)."""
+    M = [[int(params.from_field(x)) for x in row] for row in params.M]
+    rcons = [[int(params.from_field(x)) for x in row] for row in params.rcons]
+    return M, rcons
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_rcons_generated_matches_instance(name, params):
+    # Rebuilding the params without rcons must reproduce the pinned instance
+    # (M is supplied: its generation is still a stub).
+    M, _ = _instance_ints(params)
+    derived = ReinforcedConcreteParams(
+        p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
+        R_pre=params.R_pre, R_bars=params.R_bars, R_post=params.R_post,
+        si=params.si, M=M, r=params.r, c=params.c, d=params.d)
+    assert derived.rcons == params.rcons
+
+
+@pytest.mark.skip(reason="_init_mat is a stub (MDS matrix generation not implemented for Reinforced Concrete)")
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_matrix_derivation_matches_instance(name, params):
+    derived = ReinforcedConcreteParams(
+        p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
+        R_pre=params.R_pre, R_bars=params.R_bars, R_post=params.R_post,
+        si=params.si, r=params.r, c=params.c, d=params.d)  # M omitted -> _init_mat
+    assert derived.M == params.M
+
+
+@pytest.mark.skip(reason="_init_rounds is a stub (round number derivation not implemented for Reinforced Concrete)")
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_rounds_derivation_matches_instance(name, params):
+    M, _ = _instance_ints(params)
+    derived = ReinforcedConcreteParams(
+        p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
+        si=params.si, M=M, r=params.r, c=params.c, d=params.d)  # rounds omitted -> _init_rounds
+    assert (derived.R_pre, derived.R_bars, derived.R_post) == (params.R_pre, params.R_bars, params.R_post)
+
+
+# ---------------------------------------------------------------------------
+# 4.5 Misc: validation, warnings, reproducibility
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
     prim = ReinforcedConcrete(RC_BN254_T3)
     with pytest.raises(ValueError):
         prim.permutation([prim.F.zero()] * (prim.t + 1))
+
+
+def test_alpha_must_be_permutation():
+    # An explicit alpha not coprime with p-1 must be rejected by params.
+    M, _ = _instance_ints(RC_BN254_T3)
+    with pytest.raises(ValueError):
+        ReinforcedConcreteParams(
+            p=RC_BN254_T3.p, t=3, alpha=2, R_pre=3, R_bars=1, R_post=3,
+            si=RC_BN254_T3.si, M=M, r=2, c=1, d=1)
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_recommended_instance_no_warning(name, params):
+    M, _ = _instance_ints(params)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ParamRecommendationWarning)
+        ReinforcedConcreteParams(
+            p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
+            R_pre=params.R_pre, R_bars=params.R_bars, R_post=params.R_post,
+            si=params.si, M=M, r=params.r, c=params.c, d=params.d)
+
+
+def test_constants_reproducible():
+    # Same parameters -> identical derived constants, LUT, and Bricks coefficients.
+    M, _ = _instance_ints(RC_BN254_T3)
+    kwargs = dict(p=RC_BN254_T3.p, t=3, alpha=RC_BN254_T3.alpha,
+                  R_pre=3, R_bars=1, R_post=3, si=RC_BN254_T3.si, M=M,
+                  r=2, c=1, d=1)
+    a = ReinforcedConcreteParams(**kwargs)
+    b = ReinforcedConcreteParams(**kwargs)
+    assert a.rcons == b.rcons
+    assert a.LUT == b.LUT
+    assert a.a_coeffs == b.a_coeffs and a.b_coeffs == b.b_coeffs

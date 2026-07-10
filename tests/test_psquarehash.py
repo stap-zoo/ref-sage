@@ -6,16 +6,21 @@
 #   4.1 KATs         -- fixed input/output vectors (permutation)
 #   4.2 Roundtrip    -- permutation_inv undoes permutation (and per-layer)
 #   4.3 Consistency  -- determinism, distinct inputs -> distinct outputs, sizes
-#   4.4 Misc         -- validation/errors, compression availability
+#   4.4 Algebraic    -- derivation vs. pinned instance
+#   4.5 Misc         -- validation/errors, warnings, compression availability
 # ---------------------------------------------------------------------------
+
+import warnings
 
 import pytest
 
 from psquarehash.hash import pSquareHash
+from psquarehash.params import pSquareHashParams
 from psquarehash.instances import (
     PSQUAREHASH_MERSENNE_T16,
     PSQUAREHASH_MERSENNE_T24,
 )
+from recommendations import ParamRecommendationWarning
 
 INSTANCES = [
     ("M31_T16", PSQUAREHASH_MERSENNE_T16),
@@ -176,3 +181,67 @@ def test_compress_not_defined(name, params):
     x2 = [prim.F.random_element() for _ in range(half)]
     with pytest.raises(ValueError):
         prim.compress_2_to_1(x1, x2)
+
+
+# ---------------------------------------------------------------------------
+# 4.4 Algebraic: derivation vs. pinned instance
+# ---------------------------------------------------------------------------
+
+def _instance_rcons_ints(params):
+    return [[int(params.from_field(x)) for x in row] for row in params.rcons]
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_matrices_generated_match_instance(name, params):
+    # The instances derive M and M_IO via _init_mat / _init_mat_IO; rebuilding
+    # must reproduce them.
+    derived = pSquareHashParams(p=params.p, t=params.t, R=params.R,
+                                rcons=_instance_rcons_ints(params),
+                                r=params.r, c=params.c, d=params.d)
+    assert derived.M == params.M
+    assert derived.M_IO == params.M_IO
+
+
+@pytest.mark.skip(reason="_init_cons (SHAKE256 fallback) does not reproduce the reference constants pinned in instances.py; TODO: implement the paper's round-constant derivation")
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_cons_generated_matches_instance(name, params):
+    derived = pSquareHashParams(p=params.p, t=params.t, R=params.R,
+                                r=params.r, c=params.c, d=params.d)  # rcons omitted -> _init_cons
+    assert derived.rcons == params.rcons
+
+
+@pytest.mark.skip(reason="_init_rounds is a stub (round number derivation not implemented for pSquare-hash)")
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_rounds_derivation_matches_instance(name, params):
+    derived = pSquareHashParams(p=params.p, t=params.t,
+                                rcons=_instance_rcons_ints(params),
+                                r=params.r, c=params.c, d=params.d)  # R omitted -> _init_rounds
+    assert derived.R == params.R
+
+
+# ---------------------------------------------------------------------------
+# 4.5 (cont.) Warnings, reproducibility
+# ---------------------------------------------------------------------------
+
+def test_toy_field_warns():
+    with pytest.warns(ParamRecommendationWarning):
+        pSquareHashParams(p=8191, t=4, R=6, r=2, c=2, d=2)  # tiny field
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_recommended_instance_no_warning(name, params):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ParamRecommendationWarning)
+        pSquareHashParams(p=params.p, t=params.t, R=params.R,
+                          rcons=_instance_rcons_ints(params),
+                          r=params.r, c=params.c, d=params.d)
+
+
+def test_constants_reproducible():
+    # Same parameters -> identical derived constants and matrices.
+    kwargs = dict(p=PSQUAREHASH_MERSENNE_T16.p, t=16, R=52, r=8, c=8, d=8)
+    a = pSquareHashParams(**kwargs)
+    b = pSquareHashParams(**kwargs)
+    assert a.rcons == b.rcons
+    assert a.M == b.M
+    assert a.M_IO == b.M_IO

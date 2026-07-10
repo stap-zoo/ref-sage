@@ -11,11 +11,14 @@
 #   4.5 Misc         -- validation/errors
 # ---------------------------------------------------------------------------
 
+import warnings
+
 import pytest
 
 from tip5.hash import Tip4Prime
 from tip5.params import Tip4PrimeParams
 from tip5.instances import TIP4_PRIME
+from recommendations import ParamRecommendationWarning
 
 INSTANCES = [
     ("TIP4_PRIME", TIP4_PRIME),
@@ -24,7 +27,7 @@ INSTANCES = [
 # ---------------------------------------------------------------------------
 # 4.1 Known-answer test vectors.
 # Self-derived (input = [0, 1, ..., t-1]): TIP4' uses the RPO circulant MDS
-# matrix (Tip4PrimeParams._init_M = rpo_mds_matrix(12)), which differs from the
+# matrix (Tip4PrimeParams._init_mat = circulant(RPO_MDS_ROWS[12])), which differs from the
 # truncated Tip5 column used by the sage reference, so these are regenerated from
 # this implementation rather than taken from the reference. Reproduce by running
 # the permutation / hash_sponge once on the fixed input and pasting the result.
@@ -151,7 +154,7 @@ def test_hash_output_size(name, params):
 
 def test_params_derive_constants():
     """Omitting LUT/M derives the values used by the hardcoded TIP4' instance
-    (M is the RPO circulant via Tip4PrimeParams._init_M)."""
+    (M is the RPO circulant via Tip4PrimeParams._init_mat)."""
     derived = Tip4PrimeParams()
     assert TIP4_PRIME.LUT == derived.LUT
     assert TIP4_PRIME.M == derived.M
@@ -174,3 +177,22 @@ def test_invalid_state_size(name, params):
     prim = Tip4Prime(params)
     with pytest.raises(ValueError):
         prim.permutation([prim.F.zero()] * (prim.t + 1))
+
+
+# ---------------------------------------------------------------------------
+# 4.5 (cont.) Validation, warnings
+# ---------------------------------------------------------------------------
+
+def test_non_64bit_field_rejected():
+    # The design is fixed to ~64-bit fields; smaller (toy) fields are a hard
+    # error here, not a recommendation warning.
+    with pytest.raises(ValueError):
+        Tip4PrimeParams(p=8191)
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_recommended_instance_no_warning(name, params):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ParamRecommendationWarning)
+        Tip4PrimeParams(p=params.p, t=params.t, R=params.R, u=params.u,
+              r=params.r, c=params.c, d=params.d, kappa=params.kappa)

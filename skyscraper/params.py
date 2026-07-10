@@ -10,7 +10,10 @@
 # ones raise a ParamRecommendationWarning rather than an error.
 #
 # Skyscraper is a 2-branch Feistel over an (extension) field GF(p^n). It has no
-# linear layer and no power-map permutation S-box; its two round functions are:
+# linear layer -- so, deliberately, no _init_mat: the matrix-generation slot of
+# the common params contract is filled by _init_cpolys (the squaring coordinate
+# polynomials below). There is also no power-map permutation S-box; the two
+# round functions are:
 #   * Square: x -> x^2 * sigma_inv + rc   (sigma_inv is a Montgomery constant)
 #   * Bar:    x -> Bar(x) + rc            (a lookup/bit-manipulation S-box)
 # The squaring over GF(p^n) is captured -- exactly as in XHash -- by the
@@ -31,7 +34,7 @@ from hashlib import sha256
 from sage.all import GF, Integer, PolynomialRing
 
 # Custom imports
-from utils.lut import monolith_lut8
+from monolith.params import MONOLITH_LUT8   # Skyscraper's Bar reuses Monolith's 8-bit chi table
 from utils.sampler import XOFFieldElementSampler
 from utils.matrix import map_nested
 from utils.mode import derive_rate_capacity_digest
@@ -47,7 +50,7 @@ class SkyscraperParams:
         si:         list[int] = None,
         fmod:       list[int] = None,
         cpolys:     list = None,
-        R:          int = 18,
+        R:          int = None,
         bar_rounds: set = None, # TODO pass like this or maybe other method?
         LUTs:       dict[int, list[int]] = None,
         rcons:      list[list[int]] = None,
@@ -68,11 +71,11 @@ class SkyscraperParams:
                      cpolys[i] is the i-th coordinate polynomial, given as a list of terms tuple[int, tuple[int]],
                      where each term-tuple stores the coefficient and the exponent tuple. AoS format, see utils.poly.
         si         : mixed-radix bases for the Bar decompose/compose (e.g. [256]*32)
-        R          : number of Feistel rounds (default 18)
+        R          : number of Feistel rounds; the spec-fixed 18 via _init_rounds if not provided
         bar_rounds : round indices that use the Bar function (default {6,7,10,11}); all other rounds use Square
         montgomery : multiply the squaring by sigma_inv (Montgomery constant) if True
         LUTs       : per-radix lookup tables for Bar; generated via _init_LUTs if not provided
-        rcons      : R x n round constants; generated via _init_rcons (SHA256) if not provided
+        rcons      : R x n round constants; generated via _init_cons (SHA256) if not provided
         r          : sponge rate (over base-field elements); r + c == 2*n
         c          : sponge capacity (over base-field elements)
         d          : sponge digest size (over base-field elements)
@@ -114,11 +117,11 @@ class SkyscraperParams:
         self.cpolys = self._init_cpolys(cpolys) # coordinate polynomials of x -> x^2 over GF(p^n) (AoS, field coeffs)
 
         # Round schedule
-        self.R = R
+        self.R = R if R is not None else self._init_rounds()
         self.bar_rounds = set(bar_rounds) if bar_rounds is not None else {6, 7, 10, 11}
 
         # Round constants (R rows of n coordinates; first and last rows are zero)
-        self.rcons = map_nested(rcons if rcons is not None else self._init_rcons(), self.to_field)
+        self.rcons = map_nested(rcons if rcons is not None else self._init_cons(), self.to_field)
 
         # Hash modes (state size for the modes is the flat 2*n base-field state)
         self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
@@ -186,14 +189,20 @@ class SkyscraperParams:
     # Derivation helpers (defaults for the optional parameters)
     # ---------------------------------------------------------------------------
 
+    def _init_rounds(self) -> int:
+        """The round number is fixed by the spec: 18 Feistel rounds for every
+        instance (https://eprint.iacr.org/2025/058), independent of the field."""
+        return 18
+
     def _init_LUTs(self) -> dict[int, list[int]]:
-        # si entries are the radix bases (e.g. 256), mapping to the 8-bit Bar lookup table respectively.
+        # si entries are the radix bases (e.g. 256), mapping to the 8-bit Bar lookup
+        # table (Monolith's chi table, which Skyscraper's spec reuses) respectively.
+        SKYSCRAPER_LUTS = {2**8: MONOLITH_LUT8}
         LUTs = {}
         for s in set(self.si):
-            if s == 2**8:
-                LUTs[s] = monolith_lut8
-            else:
-                raise NotImplementedError(f"Bar LUT generation not implemented for base si={s}.")
+            if s not in SKYSCRAPER_LUTS:
+                raise NotImplementedError(f"Error: Not implemented -- Bar LUT generation for base si={s}")
+            LUTs[s] = SKYSCRAPER_LUTS[s]
         return LUTs
 
     def _init_cpolys(self, cpolys):
@@ -219,7 +228,7 @@ class SkyscraperParams:
         Fn = self.F.extension(f, name='X')
         return [poly_to_aos(poly) for poly in power_map_coordinate_polys(Fn, 2)]
 
-    def _init_rcons(self) -> list[list[int]]:
+    def _init_cons(self) -> list[list[int]]:
         """Rxn round constants: constant j (0 <= j <= n*(R-2)) is sampled from a fresh SHA256 sampler seeded with the 32-byte value
         (i.to_bytes(4) || "Skyscraper" || zero-pad to 32). The first and last Feistel rounds add nothing (their constants are zero by construction).
         No Montgomery scaling is performed, round constants are assumed to be in Montgomery space already.

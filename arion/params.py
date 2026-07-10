@@ -11,11 +11,11 @@
 # ---------------------------------------------------------------------------
 
 # Structural imports
+import warnings
 from recommendations import ParamRecommendationWarning
 from types import SimpleNamespace
 
 # Math specific imports
-import warnings
 from math import gcd
 from sage.all import GF, Integer, legendre_symbol
 
@@ -30,7 +30,7 @@ class ArionParams:
         self,
         p:           int,
         t:           int,
-        R:           int,
+        R:           int = None,
         alpha1:      int = None,
         alpha2:      int = None,
         alpha1_inv:  int = None,
@@ -49,15 +49,15 @@ class ArionParams:
         ----------
         p             : field characteristic (prime)
         t             : permutation state size (branches)
-        R             : number of rounds
+        R             : number of rounds; derived via _init_rounds if not provided (not yet implemented)
         alpha1        : exponent of the power permutation applied to v_0..v_{t-2} in GTDS; smallest positive integer coprime to p-1 if not provided
         alpha2        : exponent of the power permutation applied to v_{t-1} in GTDS; arbitrary positive integer coprime to p-1 if not provided
         alpha1_inv    : alpha1^{-1} mod (p-1); computed via _init_alpha1_inv if not provided
         alpha2_inv    : alpha2^{-1} mod (p-1); computed via _init_alpha2_inv if not provided
-        coeffs_g      : R*(t-1) [a, b] pairs for the rational maps g_i (legendre_symbol(a^2 - 4*b, p) == -1); generated via _init_constants if not provided
-        coeffs_h      : R*(t-1) constants for the linear maps h_i; generated via _init_constants if not provided
-        rcons         : Rxt affine round constants; generated via _init_constants if not provided
-        M             : MDS matrix (txt); generated via _init_M if not provided
+        coeffs_g      : R*(t-1) [a, b] pairs for the rational maps g_i (legendre_symbol(a^2 - 4*b, p) == -1); generated via _init_cons if not provided
+        coeffs_h      : R*(t-1) constants for the linear maps h_i; generated via _init_cons if not provided
+        rcons         : Rxt affine round constants; generated via _init_cons if not provided
+        M             : MDS matrix (txt); generated via _init_mat if not provided
         r             : rate (number of outer state elements absorbed/squeezed per sponge step);
                         derived from kappa/t via derive_rate_capacity_digest if not provided
         c             : capacity (number of inner state elements); derived if not provided
@@ -74,8 +74,8 @@ class ArionParams:
         self.t = t
         self.kappa = kappa
 
-        # Rounds (set before _init_constants, whose derivation depends on R)
-        self.R = R
+        # Rounds (set before _init_cons, whose derivation depends on R)
+        self.R = R if R is not None else self._init_rounds()
 
         # Non-linear layer (GTDS)
         self.alpha1 = alpha1 if alpha1 is not None else self._init_alpha1()
@@ -84,7 +84,7 @@ class ArionParams:
         self.alpha2_inv = alpha2_inv if alpha2_inv is not None else self._init_alpha2_inv()
         # coeffs_g, coeffs_h and rcons share one SHAKE256 stream, so they are derived together.
         if coeffs_g is None or coeffs_h is None or rcons is None:
-            _coeffs_g, _coeffs_h, _rcons = self._init_constants()
+            _coeffs_g, _coeffs_h, _rcons = self._init_cons()
             rcons = rcons if rcons is not None else _rcons
             coeffs_g = coeffs_g if coeffs_g is not None else _coeffs_g
             coeffs_h = coeffs_h if coeffs_h is not None else _coeffs_h
@@ -95,9 +95,12 @@ class ArionParams:
         self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Affine layer
-        self.M = map_nested(M if M is not None else self._init_M(), self.to_field)
+        self.M = map_nested(M if M is not None else self._init_mat(), self.to_field)
         self.M_inv = invert_matrix(self.M)
         self.rcons = map_nested(rcons, self.to_field)
+
+        # Parameter sanitization: validate the fully-constructed (stored/derived) values
+        self._parameter_sanitization()
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers
@@ -133,9 +136,30 @@ class ArionParams:
         if field_bits < 31:
             warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
 
+    def _parameter_sanitization(self):
+        """Validate the fully-constructed parameter object (stored/derived values):
+        hard checks raise, recommendation deviations warn (ParamRecommendationWarning)."""
+
+        # --- Hard checks (must always hold) ---
+        if len(self.M) != self.t or any(len(row) != self.t for row in self.M):
+            raise ValueError(f"M must be a {self.t} x {self.t} matrix")
+        if len(self.rcons) != self.R or any(len(row) != self.t for row in self.rcons):
+            raise ValueError(f"rcons must be an {self.R} x {self.t} grid (one t-vector per round)")
+        if len(self.coeffs_g) != self.R or any(len(row) != self.t - 1 for row in self.coeffs_g):
+            raise ValueError(f"coeffs_g must be an {self.R} x {self.t - 1} grid of [a, b] pairs")
+        if len(self.coeffs_h) != self.R or any(len(row) != self.t - 1 for row in self.coeffs_h):
+            raise ValueError(f"coeffs_h must be an {self.R} x {self.t - 1} grid")
+
     # ---------------------------------------------------------------------------
     # Derivation helpers (defaults for the optional parameters)
     # ---------------------------------------------------------------------------
+
+    def _init_rounds(self) -> int:
+        """Derive the round number from the target security level kappa.
+        TODO: implement the round-number criterion of the Arion paper
+        (https://eprint.iacr.org/2023/588, Section 5: Groebner basis and
+        interpolation bounds); until then R must be passed explicitly."""
+        raise NotImplementedError("Error: Not implemented -- round number derivation for Arion")
 
     def _init_alpha1(self) -> int:
         alpha1 = 2
@@ -160,10 +184,10 @@ class ArionParams:
     def _init_alpha2_inv(self) -> int:
         return pow(self.alpha2, -1, self.p - 1)
 
-    def _init_M(self) -> list[list[int]]:
+    def _init_mat(self) -> list[list[int]]:
         return simple_circulant_matrix(self.t)
 
-    def _init_constants(self):
+    def _init_cons(self):
         # Deterministic constant generation via SHAKE256, so coeffs_g/coeffs_h/rcons
         # can be reproduced from (p, t, R) instead of relying on Sage's unseeded random_element(), as
         # used by the reference implementation in https://github.com/sca-research/Arion.

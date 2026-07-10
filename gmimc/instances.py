@@ -1,6 +1,6 @@
 # instances.py
 # ---------------------------------------------------------------------------
-# Concrete, named parameter sets for pSquare-hash.
+# Concrete, named parameter sets for GMiMC.
 #
 # Each entry is a ready-to-use GMiMCParams instance pinned to a specific field
 # from utils/field.py, so every consumer agrees on the exact same parameters.

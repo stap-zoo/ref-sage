@@ -58,9 +58,9 @@ class ReinforcedConcreteParams:
         R_post    : number of Bricks+Concrete rounds after the Bars layer(s); derived via _init_rounds if not provided
         LUT       : per-digit lookup table used in Bar; generated via _init_LUT if not provided
         COEFFS    : Bricks polynomial coefficients [a_coeffs, b_coeffs]; generated via _init_COEFFS if not provided
-        M         : MDS matrix (txt); generated via _init_M if not provided
+        M         : MDS matrix (txt); generated via _init_mat if not provided
         alpha_inv : alpha^{-1} mod (p-1); computed via _init_alpha_inv if not provided
-        rcons     : (R+1)xt round constants; generated via _init_rcons (SHAKE128) if not provided
+        rcons     : (R+1)xt round constants; generated via _init_cons (SHAKE128) if not provided
         r         : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
         c         : capacity (number of inner state elements); derived if not provided
         d         : digest size (number of output elements); derived if not provided
@@ -92,7 +92,7 @@ class ReinforcedConcreteParams:
         # Hash modes
         self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
-        # Rounds (set before _init_rcons, whose derivation depends on R)
+        # Rounds (set before _init_cons, whose derivation depends on R)
         if R_pre is None or R_bars is None or R_post is None:
             R_pre, R_bars, R_post = self._init_rounds()
         self.R_pre = R_pre
@@ -101,11 +101,14 @@ class ReinforcedConcreteParams:
         self.R = R_pre + R_bars + R_post
 
         # Affine layer
-        self.M = map_nested(M if M is not None else self._init_M(), self.to_field)
+        self.M = map_nested(M if M is not None else self._init_mat(), self.to_field)
         self.M_inv = invert_matrix(self.M)
 
         # Round constants
-        self.rcons = map_nested(rcons if rcons is not None else self._init_rcons(), self.to_field)
+        self.rcons = map_nested(rcons if rcons is not None else self._init_cons(), self.to_field)
+
+        # Parameter sanitization: validate the fully-constructed (stored/derived) values
+        self._parameter_sanitization()
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers
@@ -144,6 +147,20 @@ class ReinforcedConcreteParams:
         field_bits = int(params.p).bit_length()
         if field_bits < 31:
             warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
+
+    def _parameter_sanitization(self):
+        """Validate the fully-constructed parameter object (stored/derived values):
+        hard checks raise, recommendation deviations warn (ParamRecommendationWarning)."""
+
+        # --- Hard checks (must always hold) ---
+        if len(self.M) != self.t or any(len(row) != self.t for row in self.M):
+            raise ValueError(f"M must be a {self.t} x {self.t} matrix")
+        if len(self.rcons) != self.R + 1 or any(len(row) != self.t for row in self.rcons):
+            raise ValueError(f"rcons must be an {self.R + 1} x {self.t} grid (one row per round plus the final one)")
+        if len(self.a_coeffs) != self.t - 1 or len(self.b_coeffs) != self.t - 1:
+            raise ValueError(f"Bricks coefficients must each have length t-1 = {self.t - 1}")
+        if len(self.LUT) < max(self.si):
+            raise ValueError(f"LUT must cover the largest base in si ({max(self.si)}); got {len(self.LUT)} entries")
 
     # ---------------------------------------------------------------------------
     # Derivation helpers (defaults for the optional parameters)
@@ -265,18 +282,24 @@ class ReinforcedConcreteParams:
 
         raise RuntimeError(f"Failed to find a dense, maximum-degree S-box polynomial for p'={p_prime} within {max_trials} trials.")
 
-    def _init_rcons(self) -> list[list[int]]:
+    def _init_cons(self) -> list[list[int]]:
         n_bytes = (self.p.bit_length() + 7) // 8
         seed = b"ReinforcedConcrete" + self.p.to_bytes(n_bytes, "little")
         return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_128", sampling="bitmask").grid(self.R + 1, self.t)
 
     def _init_rounds(self) -> tuple[int, int, int]:
-        # TODO implement (returns the (R_pre, R_bars, R_post) split)
-        raise NotImplementedError("Automatic round number derivation not implemented for RC.")
+        """Return the (R_pre, R_bars, R_post) round split.
+        TODO: implement the round-number criterion of the Reinforced Concrete
+        paper (https://eprint.iacr.org/2021/1038, Section 6); until then the
+        split must be passed explicitly."""
+        raise NotImplementedError("Error: Not implemented -- round number derivation for Reinforced Concrete")
 
-    def _init_M(self):
-        # TODO implement
-        raise NotImplementedError("MDS matrix generation not implemented for RC.")
+    def _init_mat(self) -> list[list[int]]:
+        """Return the t x t MDS matrix.
+        TODO: implement the paper's circulant construction (M = circ(2, 1, 1) for
+        t = 3, https://eprint.iacr.org/2021/1038 Section 5); until then M must be
+        passed explicitly."""
+        raise NotImplementedError("Error: Not implemented -- MDS matrix generation for Reinforced Concrete")
 
     @staticmethod
     def _pad_LUT(LUT: list[int], max_si: int) -> list[int]:

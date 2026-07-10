@@ -27,7 +27,7 @@ def derive_rate_capacity_digest(kappa: int, t: int, r: int = None, c: int = None
     # TODO: derive the missing rate/capacity/digest from kappa, t (and any provided r/c/d) via the
     # sponge/compression security bound (capacity ~ 2*kappa bits, rate r = t - c, digest d from kappa).
     raise NotImplementedError(
-        "automatic rate/capacity/digest derivation not implemented; pass r, c, d explicitly"
+        "Error: Not implemented -- automatic rate/capacity/digest derivation; pass r, c, d explicitly"
     )
 
 # ---------------------------------------------------------------------------
@@ -116,10 +116,6 @@ def hash_sponge(perm, data: list, state_size: int, rate: int, capacity: int, dig
         raise ValueError("IV must have exactly `capacity` elements")
     if len(data) % rate != 0:
         raise ValueError("data must be padded to a multiple of the rate")
-    if digest_size > rate:
-        raise NotImplementedError(...)
-    if len(data) > rate:
-        raise NotImplementedError(...)
 
     blocks = [data[i:i + rate] for i in range(0, len(data), rate)]
 
@@ -131,8 +127,14 @@ def hash_sponge(perm, data: list, state_size: int, rate: int, capacity: int, dig
         state = absorb(state, block)
         state = perm(state)
 
-    # Sponge - squeezing phase
-    return state[:digest_size]
+    # Sponge - squeezing phase: read rate-sized chunks of the outer state,
+    # re-permuting between chunks until digest_size elements are collected.
+    digest = []
+    while True:
+        digest.extend(state[:min(rate, digest_size - len(digest))])
+        if len(digest) == digest_size:
+            return digest
+        state = perm(state)
 
 
 def hash_sponge_pi(perm, data: list, state_size: int, rate: int, capacity: int, digest_size: int, IV: list, mu: int, absorb=add_to_start, to_field=lambda x: x) -> list:
@@ -146,11 +148,11 @@ def hash_sponge_pi(perm, data: list, state_size: int, rate: int, capacity: int, 
     if len(data) % rate != 0:
         raise ValueError("data must be padded to a multiple of the rate")
     if digest_size > rate:
-        raise NotImplementedError(...)
+        raise NotImplementedError("Error: Not implemented -- sponge-pi squeezing over more than one block (digest_size > rate)")
     if IV[-1] != to_field(digest_size):
         raise ValueError("Invalid domain separation: digest_size must be encoded as last element in IV")
     if len(data) > rate:
-        raise NotImplementedError(...)
+        raise NotImplementedError("Error: Not implemented -- sponge-pi absorption of more than one block")
 
     blocks = [data[i:i + rate] for i in range(0, len(data), rate)]
 
@@ -205,5 +207,6 @@ def hash_sponge_hirose(perm, data: list, state_size: int, rate: int, capacity: i
 
 def hash_sponge_safe(perm, data: list, state_size: int, rate: int, capacity: int, digest_size: int, IV: list = None, absorb=add_to_start, to_field=lambda x: x) -> list:
     # SAFE: Sponge API for Field Elements (https://eprint.iacr.org/2023/522)
-    # TODO implement
+    # TODO: implement the SAFE IV/tag schedule; this is currently a plain-sponge
+    # passthrough, NOT the SAFE construction.
     return hash_sponge(perm, data, state_size, rate, capacity, digest_size, IV, absorb, to_field)

@@ -25,7 +25,7 @@ from skyscraper.instances import (
     SKYSCRAPER_VESTA_N1, SKYSCRAPER_VESTA_N2, SKYSCRAPER_VESTA_N3,
 )
 from utils.field import BLS12_381_SCALAR, GOLDILOCKS
-from utils.lut import monolith_lut8
+from monolith.params import MONOLITH_LUT8
 from utils.poly import power_map_coordinate_polys, poly_to_aos, univ_from_list
 from recommendations import ParamRecommendationWarning
 from sage.all import GF, PolynomialRing
@@ -238,7 +238,7 @@ def test_square_is_generic_degree_two(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_instance_lut_is_chi(name, params):
-    assert params.LUTs[256] == monolith_lut8
+    assert params.LUTs[256] == MONOLITH_LUT8
 
 
 def test_cpolys_derivation_matches_override():

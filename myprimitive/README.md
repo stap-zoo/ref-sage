@@ -11,7 +11,7 @@ This guide walks through what you need to implement when adding a new arithmetiz
 - [1. `params.py`](#1-paramspy)
   - [1.1 Module-level constants](#11-module-level-constants)
   - [1.2 The `<Name>Params` constructor](#12-the-nameparams-constructor)
-  - [1.3 Input sanitization and security requirements](#13-input-sanitization-and-security-requirements)
+  - [1.3 Input and parameter sanitization](#13-input-and-parameter-sanitization)
   - [1.4 Field-conversion helpers](#14-field-conversion-helpers)
   - [1.5 The `_init_*` derivation helpers](#15-the-_init_-derivation-helpers)
   - [1.6 Checklist for a new `params.py`](#16-checklist-for-a-new-paramspy)
@@ -42,7 +42,7 @@ The job of `params.py` is to take a small set of *user-facing* parameters and ex
 It has two parts:
 
 1. **Module-level constants**: fixed, field-independent design data specific to the primitive.
-2. **The `<Name>Params` class**: the constructor, the input-sanitization method, a couple of field-conversion helpers, and a set of `_init_*` helpers that derive the missing values.
+2. **The `<Name>Params` class**: the constructor, the two sanitization methods (`_input_sanitization` before construction, `_parameter_sanitization` after), a couple of field-conversion helpers, and a set of `_init_*` helpers that derive the missing values. Three of the `_init_*` helpers have **canonical names shared by every primitive**: `_init_rounds` (round numbers), `_init_cons` (round constants and any other derived constants), and `_init_mat` (matrix generation).
 
 ### 1.1 Module-level constants
 
@@ -50,21 +50,23 @@ Put here anything that is a fixed *design choice* baked into the primitive and i
 
 In the `MyPrimitiveParams` template this section is empty except for a comment and a commented-out example (`PI_0`, a long run of pi digits that a primitive might use to seed its round constants). Replace it with whatever fixed, field-independent data your construction needs, and give each entry a short comment saying where it comes from and what it is used for.
 
+Pinned design data (published matrices, lookup tables, circulant rows, ...) always lives here — as a module-level constant, typically a dict keyed by the state size `t` or the decomposition radix — never inline behind `if t == ...` branches inside an `_init_*` helper (which then just does a lookup and falls through to the generic construction or raises). Precedents: `polocolo.MDS`, `anemoi.CIRCULANT_MDS_ROWS`, `monolith.MONOLITH_LUTS`, `marvellous.RPO_MDS_ROWS`. When a primitive reuses another design's table (Skyscraper reuses Monolith's Bar LUT, Tip4' reuses RPO's MDS rows), it imports that primitive's constant instead of duplicating the data; only *generic* builders (circulant, Cauchy/Vandermonde constructions, the chi-landscape machinery, ...) belong in `utils/`.
+
 ### 1.2 The `<Name>Params` constructor
 
 The constructor takes the user-facing parameters, runs them through input sanitization, and then fills in every unspecified value. Its first action is to hand the complete argument list to `_input_sanitization` (see 1.3); after that it populates the instance in labelled blocks:
 
 - **Non-linear layer**: values tied to the S-box. `alpha` defaults to the smallest valid exponent, and `alpha_inv = alpha^{-1} mod (p-1)` is derived.
-- **Linear layer**: the matrix `M`, provided or built by `_init_M()`, lifted to
+- **Linear layer**: the matrix `M`, provided or built by `_init_mat()`, lifted to
   field elements via `map_to_field`, with its inverse `M_inv` precomputed.
-- **Round constants**: `rcons`, provided or built by `_init_rcons()`, also
+- **Round constants**: `rcons`, provided or built by `_init_cons()`, also
   lifted into the field via `map_to_field`.
 - **Hash modes**: the sponge/compression parameters (`r`, `c`, `d`) that `hash.py` reads.
-- **Round number**: `R` is taken as given, or derived via `_init_R()`.
+- **Round number**: `R` is taken as given, or derived via `_init_rounds()`.
 
 > **A note on block order.** Input sanitization must come first — every other block assumes the arguments are already valid. The remaining blocks, however, are *not* in a fixed order: arrange them to respect your primitive's dependencies. Two kinds of ordering constraints commonly appear.
 >
-> *Data dependencies.* A derivation may consume values produced by an earlier block. Round-number derivation, for example, often depends on the S-box exponent (`_init_R` needs `self.alpha`), so the non-linear block must run before the round-number block; if `_init_rcons` needs `R` and `alpha`, it must run after both. Set each attribute before the block that reads it.
+> *Data dependencies.* A derivation may consume values produced by an earlier block. Round-number derivation, for example, often depends on the S-box exponent (`_init_rounds` needs `self.alpha`), so the non-linear block must run before the round-number block; if `_init_cons` needs `R` and `alpha`, it must run after both. Set each attribute before the block that reads it.
 >
 > *Reproducibility.* When the matrix and/or the round constants are drawn from a single deterministic stream (e.g. a `FieldElementSampler` / XOF seeded once) the *order in which you query that stream* fixes the output. To reproduce a reference implementation's test vectors you must query it in exactly the same order (say, all matrix entries before any round constant, or interleaved per round). Reordering the blocks then silently changes the generated values even though each block's own logic is untouched.
 
@@ -77,14 +79,16 @@ For `MyPrimitiveParams` the user-provided parameters are:
 | `r`, `c`, `d` | yes | Hash-mode (sponge) parameters: rate, capacity, digest size. |
 | `alpha` | no | S-box exponent, coprime with `p-1`. Smallest valid exponent if omitted. |
 | `R` | no | Number of rounds. Derived from the attack complexity if omitted. |
-| `M` | no | `t x t` MDS matrix for the linear layer. Generated by `_init_M()` if omitted. |
-| `rcons` | no | Round constants. Generated by `_init_rcons()` if omitted. |
+| `M` | no | `t x t` MDS matrix for the linear layer. Generated by `_init_mat()` if omitted. |
+| `rcons` | no | Round constants. Generated by `_init_cons()` if omitted. |
 | `kappa` | no | Target security level in bits (default `128`). |
 
 Matrices are generally accepted as `list[list[int]]` and round constants as `list[int]` (or similar); both are converted to field elements with `map_to_field` so the rest of the framework only ever sees field elements. Taking plain integers at the boundary keeps instance generation independent of any finite-field logic (the same matrix or constant table can be written down, diffed, and reused across fields) and makes the raw parameters easy to inspect, log, and compare against a reference, with `map_to_field` performing the single, explicit lift into `F`.
 
 
-### 1.3 Input sanitization and security requirements
+### 1.3 Input and parameter sanitization
+
+Sanitization happens twice, bracketing the constructor: `_input_sanitization` validates the *raw arguments* before anything is stored, and `_parameter_sanitization` validates the *fully-constructed object* (stored and derived values) as the constructor's last step.
 
 The constructor's first step delegates to `_input_sanitization`, which receives a single struct holding every constructor argument, accessed by attribute (`params.p`, `params.t`, `params.alpha`, ...). Bundling the arguments this way means the method's signature never has to change as you add checks. It performs two kinds of checks.
 
@@ -122,6 +126,8 @@ with warnings.catch_warnings():
 
 Note that by default Python shows each unique warning only once per call site, so looping over many toy instances won't spam the console unless `simplefilter("always")` is set.
 
+**Parameter sanitization.** After every value has been stored or derived, the constructor ends with `self._parameter_sanitization()`. Where `_input_sanitization` can only see the raw arguments (some of which may be `None`), this method sees the finished object, so it checks the *structural invariants of the stored values*: the matrix is `t x t`, `rcons` has one row per round of the right width, a derived exponent still defines a permutation, and so on. It uses the same two buckets as `_input_sanitization`: hard checks `raise`, deviations from the recommended settings go through `warnings.warn(..., ParamRecommendationWarning)`. Checks on user *input* belong in `_input_sanitization`; checks on *derived or stored* values belong here — inline validation sprinkled through the constructor body belongs in neither.
+
 ### 1.4 Field-conversion helpers
 
 `to_field(n)` lifts an `int` into `F = GF(p)`, and `from_field(el)` brings a field element back to an `Integer`. Every primitive shares these two helpers so that test vectors, round constants, and matrices move between the integer and field representations the same way across the whole framework.
@@ -131,11 +137,22 @@ Note that by default Python shows each unique warning only once per call site, s
 This is where the actual design logic lives: each helper supplies the default for one parameter when the user did not pass it. These are the most important methods to get right, because they encode the security argument. The template ships one working helper and three stubs:
 
 - **`_init_alpha`** *(implemented)*: picks the smallest exponent `>= 3` that is coprime with `p-1`, i.e. an invertible S-box exponent.
-- **`_init_R`** *(stub)*: derive the round count needed to resist the relevant attacks (algebraic / Groebner-basis, differential, ...). This is the security core of the primitive; document the bound you use.
-- **`_init_M`** *(stub)*: return a `t x t` MDS matrix over `F`. If your construction is generic and reusable (e.g. a Cauchy or circulant search), search for it in `utils.py` or implement it there if not present.
-- **`_init_rcons`** *(stub)*: derive the round constants (from digits of pi, a fixed seed, a counter, ...). For reproducible "random" constants, many primitives use a `FieldElementSampler` from `utils.py` (recall the query-order caveat in 1.2).
+- **`_init_rounds`** *(stub)*: derive the round count needed to resist the relevant attacks (algebraic / Groebner-basis, differential, ...). This is the security core of the primitive; document the bound you use.
+- **`_init_mat`** *(stub)*: return a `t x t` MDS matrix over `F`. If your construction is generic and reusable (e.g. a Cauchy or circulant search), search for it in `utils.py` or implement it there if not present.
+- **`_init_cons`** *(stub)*: derive the round constants (from digits of pi, a fixed seed, a counter, ...). For reproducible "random" constants, many primitives use a `FieldElementSampler` from `utils.py` (recall the query-order caveat in 1.2).
 
-The pattern to mirror for any new primitive: one `_init_<thing>` per parameter that has a non-trivial default, with the constructor choosing whether to call it based on whether the user supplied a value.
+The pattern to mirror for any new primitive: one `_init_<thing>` per parameter that has a non-trivial default, with the constructor choosing whether to call it based on whether the user supplied a value. Keep the three canonical names (`_init_rounds`, `_init_cons`, `_init_mat`) even when your primitive extends them (e.g. `_init_cons` may derive coefficient tables alongside the round constants from one XOF stream, and a family base class may split the matrix into `_init_mat_ext` / `_init_mat_int`).
+
+**Stub idiom.** A helper whose derivation is not (yet) worked out must still exist, as a stub, so the contract is uniform and the gap is visible:
+
+```python
+def _init_rounds(self) -> int:
+    """Derive round numbers to resist known attacks.
+    TODO: replace with your primitive's round number derivation strategy."""
+    raise NotImplementedError("Error: Not implemented -- round number derivation for MyPrimitive")
+```
+
+A docstring with a `TODO:` line saying what should happen (citing the paper's criterion where possible), plus a `NotImplementedError` whose message starts with `Error: Not implemented`. For primitives whose spec fixes a value outright (e.g. a fixed round count), the helper simply returns that value with a docstring noting it is spec-fixed — that is an implementation, not a stub.
 
 ---
 
@@ -179,9 +196,9 @@ MYPRIMITIVE_GOLDILOCKS_T2 = MyPrimitiveParams(
     p=GOLDILOCKS.p,                   # field characteristic, taken from the Field entry
     t=3,                              # state size
     alpha=GOLDILOCKS.alpha,           # S-box exponent recommended for this field
-    R=5,                              # number of rounds (omit to derive via _init_R)
-    rcons=[1, 2, 3, 4, 5],            # round constants (omit to derive via _init_rcons)
-    M=[[1, 2, 3, 4], [5, 6, 7, 8]],   # MDS matrix (omit to derive via _init_M)
+    R=5,                              # number of rounds (omit to derive via _init_rounds)
+    rcons=[1, 2, 3, 4, 5],            # round constants (omit to derive via _init_cons)
+    M=[[1, 2, 3, 4], [5, 6, 7, 8]],   # MDS matrix (omit to derive via _init_mat)
     r=2,                              # sponge rate (set to None if you do not specify Sponge mode)
     c=1,                              # sponge capacity (note r + c == t)
     d=1,                              # digest size
@@ -327,6 +344,9 @@ These check that components match their mathematical definition and behave corre
 - **Component identities**: pin a layer to its formula in a setting where it simplifies, e.g., with `R = 1` and a zero round constant, the affine/linear layer must equal the bare `matvecmul(M, x)` (as in the example's `test_affine`, which also sweeps several fields, state sizes, and exponents).
 - **Symbolic degree**: run the permutation on the generators of `PolynomialRing(F, 'x', t)` (per 3.6) and check the output's total degree matches the expected growth (on the order of `alpha**R`); this suggests the components are generic and pins the algebraic complexity the security analysis relies on.
 - **Satisfiability**: build a polynomial system used for algebraic attacks, then substitute a concrete input/output pair (together with the actual intermediate values from running the permutation on that input), and check that every equation vanishes. This confirms the algebraic model agrees with the concrete evaluation, which the whole Gröbner-basis analysis depends on.
+- **Derivation vs. pinned instance** (`test_generated_matches_instance`): rebuild the params *without* passing `M` / `rcons` (and, where derivable, `R`) and check the `_init_*` helpers reproduce exactly the values stored in `instances.py`. This ties the generation code to the published constants.
+
+**Deactivated tests.** When a check cannot run yet because the feature it exercises is a stub (e.g. `test_generated_matches_instance` while `_init_mat` raises `NotImplementedError`), still write the test in full and deactivate it with `@pytest.mark.skip(reason="...")` naming the blocker. Never comment tests out: a skip shows up in every pytest run (`-rs` lists the reasons), so the gap stays visible until the stub is implemented.
 
 ### 4.5 Anything else worth adding
 

@@ -152,31 +152,50 @@ def test_sponge_kat(name, params):
 #
 # The XHash extension S-box inverse (_sbox_P3_inv) is not implemented yet, so the
 # full permutation inverse and the P3 non-linear layer inverse raise
-# NotImplementedError. The intended invertibility assertions are kept (commented)
-# for when the inverse power map lands.
+# NotImplementedError. The intended invertibility assertions are written in full
+# but skip-marked until the inverse power map lands; the active tests document
+# the current raising behavior.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="XHash _sbox_P3_inv not implemented; permutation_inv raises NotImplementedError")
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_roundtrip(name, params):
     prim = XHash(params)
     inp = [prim.F.random_element() for _ in range(prim.t)]
-    # assert prim.permutation_inv(prim.permutation(inp)) == inp
+    assert prim.permutation_inv(prim.permutation(inp)) == inp
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
+def test_permutation_inv_raises_not_implemented(name, params):
+    # Documents the current behavior until _sbox_P3_inv is implemented.
+    prim = XHash(params)
+    inp = [prim.F.random_element() for _ in range(prim.t)]
     with pytest.raises(NotImplementedError):
         prim.permutation_inv(prim.permutation(inp))
+
+
+@pytest.mark.skip(reason="XHash _sbox_P3_inv not implemented; the P3 rounds (r % 3 == 2) raise NotImplementedError")
+@pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
+def test_p3_layer_roundtrip(name, params):
+    prim = XHash(params)
+    inp = [prim.F.random_element() for _ in range(prim.t)]
+    for r in range(int(1.5 * prim.R)):
+        if r % 3 == 2:
+            assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_layer_roundtrip(name, params):
     # Constant addition and the linear layer are genuine inverses for every round.
     # The non-linear layer is only invertible for non-P3 rounds; the P3 rounds
-    # (r % 3 == 2) hit the unimplemented extension S-box inverse.
+    # (r % 3 == 2) hit the unimplemented extension S-box inverse (see the
+    # skip-marked test_p3_layer_roundtrip above).
     prim = XHash(params)
     inp = [prim.F.random_element() for _ in range(prim.t)]
     for r in range(int(1.5 * prim.R)):
         assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
         assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
         if r % 3 == 2:
-            # assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
             with pytest.raises(NotImplementedError):
                 prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r)
         else:
@@ -219,7 +238,7 @@ def test_permutation_distinct_inputs(name, params):
 
 @pytest.mark.parametrize("name,inst,cpolys,skipbox", DERIVATION, ids=IDS)
 def test_mds_matrix_derivation(name, inst, cpolys, skipbox):
-    # _init_M must reproduce the committed matrix (t=12 via rpo_mds_matrix, t=24 via
+    # _init_mat must reproduce the committed matrix (t=12 via RPO_MDS_ROWS, t=24 via
     # the truncated Reed-Solomon circulant).
     derived = _derive(inst, cpolys, skipbox)
     assert derived.M == inst.M
