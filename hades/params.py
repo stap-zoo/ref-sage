@@ -64,6 +64,26 @@ POSEIDON_SEEDING_VERSIONS = {
 }
 
 # ---------------------------------------------------------------------------
+# Pinned matrix data (Poseidon2 / Neptune)
+# ---------------------------------------------------------------------------
+
+# Poseidon2 (https://eprint.iacr.org/2023/323, Section 5.1): fixed external
+# matrices for the small state sizes (t a multiple of 4 uses the generic
+# M4-block-circulant construction) and the spec-fixed MAT_DIAG_M_1 diagonals of
+# the internal matrix M_I = J + diag(mat_diag); larger diagonals are
+# field-specific and supplied per instance.
+POSEIDON2_M_EXT = {2: circulant([2, 1]), 3: circulant([2, 1, 1])}
+POSEIDON2_MAT_DIAG = {2: [1, 2], 3: [1, 1, 2]}
+
+# Neptune (https://eprint.iacr.org/2021/1695): the split external matrix M_E is
+# built from a pair (M', M'') of half-size circulants, fixed for t in {4, 8}
+# (rows below) and sampled from the SHAKE stream otherwise.
+NEPTUNE_SPLIT_ROWS = {4: ([2, 1], [1, 2]), 8: ([3, 2, 1, 1], [1, 1, 2, 3])}
+
+# Neptune's Lai-Massey mixing matrix (fixed by the spec).
+NEPTUNE_LM_M = [[2, 1], [1, 3]]
+
+# ---------------------------------------------------------------------------
 # Hades base parameters
 # ---------------------------------------------------------------------------
 
@@ -85,7 +105,7 @@ class HadesParams:
     There is therefore no rc_init / rc_rounds split.
 
     Subclasses derive their matrices and round constants from a deterministic sampler via the
-    _init_sampler / _init_rcons / _init_M_ext / _init_M_int hooks (any of which may instead be
+    _init_sampler / _init_cons / _init_mat_ext / _init_mat_int hooks (any of which may instead be
     supplied explicitly). Matrices and round constants are given as plain integers (or field
     elements) and stored as field elements.
     """
@@ -96,8 +116,8 @@ class HadesParams:
         p: int,
         t: int,
         alpha: int,
-        R_ext: int,
-        R_int: int,
+        R_ext: int = None,
+        R_int: int = None,
         r: int = None,
         c: int = None,
         d: int = None,
@@ -116,15 +136,15 @@ class HadesParams:
         p               : field characteristic (prime)
         t               : permutation state size (branches)
         alpha           : exponent of the power-map S-box (its degree)
-        R_ext           : number of external (full) rounds
-        R_int           : number of internal (partial) rounds
+        R_ext           : number of external (full) rounds; derived via _init_rounds if not provided (not yet implemented)
+        R_int           : number of internal (partial) rounds; derived via _init_rounds if not provided (not yet implemented)
         r               : rate (number of outer state elements absorbed/squeezed per sponge step)
         c               : capacity (number of inner state elements)
         d               : digest size (number of output elements)
         version         : round-constant / MDS construction strategy (see POSEIDON_VERSIONS)
-        M_ext           : external-round matrix (txt); derived via _init_M_ext if not given
-        M_int           : internal-round matrix (txt); derived via _init_M_int if not given
-        rcons           : per-round constant grid the round loop indexes; derived via _init_rcons if not given
+        M_ext           : external-round matrix (txt); derived via _init_mat_ext if not given
+        M_int           : internal-round matrix (txt); derived via _init_mat_int if not given
+        rcons           : per-round constant grid the round loop indexes; derived via _init_cons if not given
         R_ext_beg       : number of external rounds before the internal rounds; default R_ext // 2
         R_ext_end       : number of external rounds after the internal rounds; default R_ext - R_ext_beg
         u               : number of branches the S-box hits in internal rounds; default 1
@@ -164,13 +184,14 @@ class HadesParams:
         # Round constants are drawn first (Poseidon's Grain MDS continues the same stream),
         # then the matrices. `rcons` is the engine grid the round loop indexes (>= R rows;
         # Neptune adds one for its trailing whitening constant).
-        self.rcons = map_nested(rcons if rcons is not None else self._init_rcons(), self.to_field)
-        if len(self.rcons) < self.R:
-            raise ValueError(f"Expected at least {self.R} round-constant rows, got {len(self.rcons)}")
-        self.M_ext = map_nested(M_ext if M_ext is not None else self._init_M_ext(), self.to_field)
-        self.M_int = map_nested(M_int if M_int is not None else self._init_M_int(), self.to_field)
+        self.rcons = map_nested(rcons if rcons is not None else self._init_cons(), self.to_field)
+        self.M_ext = map_nested(M_ext if M_ext is not None else self._init_mat_ext(), self.to_field)
+        self.M_int = map_nested(M_int if M_int is not None else self._init_mat_int(), self.to_field)
         self.M_ext_inv = invert_matrix(self.M_ext)
         self.M_int_inv = invert_matrix(self.M_int)
+
+        # Parameter sanitization: validate the fully-constructed (stored/derived) values
+        self._parameter_sanitization()
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers
@@ -205,21 +226,40 @@ class HadesParams:
         if field_bits < 31:
             warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
 
+    def _parameter_sanitization(self):
+        """Validate the fully-constructed parameter object (stored/derived values):
+        hard checks raise, recommendation deviations warn (ParamRecommendationWarning).
+        Shared by all Hades subclasses."""
+
+        # --- Hard checks (must always hold) ---
+        if len(self.M_ext) != self.t or any(len(row) != self.t for row in self.M_ext):
+            raise ValueError(f"M_ext must be a {self.t} x {self.t} matrix")
+        if len(self.M_int) != self.t or any(len(row) != self.t for row in self.M_int):
+            raise ValueError(f"M_int must be a {self.t} x {self.t} matrix")
+        if len(self.rcons) < self.R:
+            raise ValueError(f"Expected at least {self.R} round-constant rows, got {len(self.rcons)}")
+        if any(len(row) != self.t for row in self.rcons):
+            raise ValueError(f"each rcons row must hold {self.t} elements")
+
     # ---------------------------------------------------------------------------
     # Derivation helpers (virtual; implemented per subclass)
     # ---------------------------------------------------------------------------
 
-    def _init_rounds(self):
-        raise NotImplementedError("Virtual function, implement in derived class.")
+    def _init_rounds(self) -> tuple[int, int]:
+        """Return (R_ext, R_int).
+        TODO: implement the round-number derivation per subclass (e.g. Poseidon's
+        calc_round_numbers script, https://eprint.iacr.org/2019/458 Section 5.5);
+        until then R_ext and R_int must be passed explicitly."""
+        raise NotImplementedError("Error: Not implemented -- virtual function, implement in derived class")
 
-    def _init_M_ext(self):
-        raise NotImplementedError("Virtual function, implement in derived class.")
+    def _init_mat_ext(self):
+        raise NotImplementedError("Error: Not implemented -- virtual function, implement in derived class")
 
-    def _init_M_int(self):
-        raise NotImplementedError("Virtual function, implement in derived class.")
+    def _init_mat_int(self):
+        raise NotImplementedError("Error: Not implemented -- virtual function, implement in derived class")
 
-    def _init_rcons(self):
-        raise NotImplementedError("Virtual function, implement in derived class.")
+    def _init_cons(self):
+        raise NotImplementedError("Error: Not implemented -- virtual function, implement in derived class")
 
     def _init_sampler(self):
         """Build the Grain LFSR for a Poseidon `version` (see POSEIDON_SEEDING_VERSIONS): 
@@ -270,11 +310,11 @@ class PoseidonParams(HadesParams):
                          R_ext_beg=R_ext_beg, R_ext_end=R_ext_end, u=u, kappa=kappa)
         self.M = self.M_ext  # alias (single MDS)
 
-    def _init_rcons(self):
+    def _init_cons(self):
         # Full-width round constants for every round (rejection-sampled from the Grain stream).
         return self.sampler.grid(self.R, self.t)
 
-    def _init_M_ext(self):
+    def _init_mat_ext(self):
         if self.mds_strategy == "fixed":
             # fixed 1/(i-t-j) (khovratovich / "ethereum")
             return cauchy_mds_matrix(self.p, self.t)          
@@ -287,7 +327,7 @@ class PoseidonParams(HadesParams):
         else:
             raise NotImplementedError(f"Unknown matrix generation strategy {self.mds_strategy}.") 
 
-    def _init_M_int(self):
+    def _init_mat_int(self):
         return self.M_ext  # single MDS for both external and internal rounds
 
 
@@ -309,7 +349,7 @@ class Poseidon2Params(HadesParams):
                          rcons=rcons, M_ext=M_ext, M_int=None, # M_int is always J + diag(mat_diag)
                          R_ext_beg=R_ext_beg, R_ext_end=R_ext_end, u=u, kappa=kappa)
 
-    def _init_rcons(self):
+    def _init_cons(self):
         """Grid R x t: external rounds draw t constants, internal rounds draw u constants
         (placed on the first u branches, the rest zero), matching the HorizenLabs reference for u=1."""
         rc = []
@@ -320,11 +360,12 @@ class Poseidon2Params(HadesParams):
                 rc.append([self.sampler.next() for _ in range(self.t)])
         return rc
 
-    def _init_M_ext(self):
-        if self.t == 2:
-            return circulant(row=[2, 1])
-        if self.t == 3:
-            return circulant(row=[2, 1, 1])
+    def _init_mat_ext(self):
+        """The pinned external matrix for t in {2, 3} (module constant
+        POSEIDON2_M_EXT), otherwise the generic M4 block-circulant construction
+        for t a multiple of 4 (with the spec's doubling at t = 4)."""
+        if self.t in POSEIDON2_M_EXT:
+            return POSEIDON2_M_EXT[self.t]
         if self.t % 4 == 0:
             M4 = dl_m44_84_matrix(alpha=2)
             if self.t == 4:
@@ -332,14 +373,13 @@ class Poseidon2Params(HadesParams):
             return m4_to_block_circulant_matrix(t=self.t, M4=M4)
         raise ValueError("Poseidon2 state size must be 2, 3, or a multiple of 4")
 
-    def _init_M_int(self):
+    def _init_mat_int(self):
         # M_I = J + diag(mat_diag). The MAT_DIAG_M_1 diagonals for the small state sizes are fixed
-        # by the spec; larger sizes are field-specific and must be supplied per instance.
+        # by the spec (module constant POSEIDON2_MAT_DIAG); larger sizes are field-specific and
+        # must be supplied per instance.
         if self.mat_diag is None:
-            if self.t == 2:
-                self.mat_diag = [1, 2]
-            elif self.t == 3:
-                self.mat_diag = [1, 1, 2]
+            if self.t in POSEIDON2_MAT_DIAG:
+                self.mat_diag = POSEIDON2_MAT_DIAG[self.t]
             else:
                 # TODO implement like in Neptune?
                 raise ValueError(f"mat_diag (MAT_DIAG_M_1) required for Poseidon2 with t={self.t}")
@@ -375,7 +415,7 @@ class NeptuneParams(HadesParams):
         self.lm_alpha_inv = pow(self.lm_alpha, -1, p - 1)
         self.lm_beta = self.to_field(1)
         self.lm_gamma = self.to_field(self.sampler.next_nonzero())
-        self.lm_M = map_nested([[2,1],[1,3]], self.to_field)
+        self.lm_M = map_nested(NEPTUNE_LM_M, self.to_field)
         self.lm_M_inv = invert_matrix(self.lm_M)
 
     def _init_sampler(self):
@@ -384,21 +424,20 @@ class NeptuneParams(HadesParams):
         sampler = XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_128", sampling="bitmask")
         return sampler
 
-    def _init_rcons(self):
+    def _init_cons(self):
         # Leading zero row + R full-width rows: round 0 adds nothing before its S-box, and the
         # final row is applied by _post_rounds (output whitening). The R drawn rows match the
         # reference's full-width round constants; the zero row is not drawn from the stream.
         return [[0] * self.t] + self.sampler.grid(self.R, self.t)
 
-    def _init_M_ext(self):
+    def _init_mat_ext(self):
         """Even/odd "split" matrix M with M[2r][2c] = M'[r][c] and M[2r+1][2c+1] = M''[r][c]
-        (all other entries zero). M', M'' are fixed circulants for t in {4,8} and otherwise
-        sampled from the SHAKE stream (M' then M'')."""
+        (all other entries zero). M', M'' are fixed circulants for t in {4,8} (module
+        constant NEPTUNE_SPLIT_ROWS) and otherwise sampled from the SHAKE stream (M' then M'')."""
         t, half = self.t, self.t // 2
-        if t == 4:
-            Mp, Mpp = circulant(row=[2, 1]), circulant(row=[1, 2])
-        elif t == 8:
-            Mp, Mpp = circulant(row=[3, 2, 1, 1]), circulant(row=[1, 1, 2, 3])
+        if t in NEPTUNE_SPLIT_ROWS:
+            row_p, row_pp = NEPTUNE_SPLIT_ROWS[t]
+            Mp, Mpp = circulant(row=row_p), circulant(row=row_pp)
         else:
             Mp = self.sampler.grid(half, half)
             Mpp = self.sampler.grid(half, half)
@@ -409,7 +448,7 @@ class NeptuneParams(HadesParams):
                 M[2 * rr + 1][2 * col + 1] = Mpp[rr][col]
         return M
 
-    def _init_M_int(self):
+    def _init_mat_int(self):
         # M_I = J + diag(mat_diag). When not supplied, draw the diagonal mu (nonzero) from SHAKE;
         # mat_diag = mu - 1 so the resulting diagonal is mu (off-diagonal entries 1).
         if self.mat_diag is None:

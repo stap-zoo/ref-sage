@@ -1,3 +1,10 @@
+# test_utils.py
+# ---------------------------------------------------------------------------
+# Test suite for the shared utils/ helpers, exercised against real primitive
+# instances (Reinforced Concrete and Monolith) rather than synthetic data:
+# mixed-radix decompose/compose roundtrips and digit-range checks.
+# ---------------------------------------------------------------------------
+
 import pytest
 from sage.all import GF, Integer
 

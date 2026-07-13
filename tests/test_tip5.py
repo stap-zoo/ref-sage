@@ -10,11 +10,14 @@
 #   4.5 Misc         -- validation/errors
 # ---------------------------------------------------------------------------
 
+import warnings
+
 import pytest
 
 from tip5.hash import Tip5
 from tip5.params import Tip5Params
 from tip5.instances import TIP5, LOOKUP_TABLE
+from recommendations import ParamRecommendationWarning
 
 INSTANCES = [
     ("TIP5", TIP5),
@@ -245,3 +248,22 @@ def test_invalid_state_size(name, params):
     prim = Tip5(params)
     with pytest.raises(ValueError):
         prim.permutation([prim.F.zero()] * (prim.t + 1))
+
+
+# ---------------------------------------------------------------------------
+# 4.5 (cont.) Validation, warnings
+# ---------------------------------------------------------------------------
+
+def test_non_64bit_field_rejected():
+    # The design is fixed to ~64-bit fields; smaller (toy) fields are a hard
+    # error here, not a recommendation warning.
+    with pytest.raises(ValueError):
+        Tip5Params(p=8191)
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_recommended_instance_no_warning(name, params):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ParamRecommendationWarning)
+        Tip5Params(p=params.p, t=params.t, R=params.R, u=params.u,
+              r=params.r, c=params.c, d=params.d, kappa=params.kappa)

@@ -24,9 +24,9 @@ MYPRIMITIVE_GOLDILOCKS_T3 = MyPrimitiveParams(
     p=GOLDILOCKS.p,                   # field characteristic, taken from the Field entry
     t=3,                              # state size (the sponge mode needs t >= 3)
     alpha=GOLDILOCKS.alpha,           # S-box exponent recommended for this field
-    R=5,                              # number of rounds (omit to derive via _init_R)
+    R=5,                              # number of rounds (omit to derive via _init_rounds)
     rcons=[[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [13, 14, 15]],  # R x t round constants (omit to derive)
-    M=circulant([1, 2, 3]),           # t x t MDS matrix (omit to derive via _init_M)
+    M=circulant([1, 2, 3]),           # t x t MDS matrix (omit to derive via _init_mat)
     r=2,                              # sponge rate (set to None if you do not specify Sponge mode)
     c=1,                              # sponge capacity (note r + c == t)
     d=1,                              # digest size

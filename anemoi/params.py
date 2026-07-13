@@ -11,11 +11,11 @@
 # ---------------------------------------------------------------------------
 
 # Structural imports
+import warnings
 from recommendations import ParamRecommendationWarning
 from types import SimpleNamespace
 
 # Math specific imports
-import warnings
 from math import gcd
 from sage.all import GF, Integer
 
@@ -67,8 +67,8 @@ class AnemoiParams:
         alpha_inv : alpha^{-1} mod (p-1); computed via _init_alpha_inv if not provided
         l         : number of columns (parallel Flystel S-boxes); the state size is t = 2*l
         t         : state size (must be even); alternative to l, specify at least one of the two
-        R         : number of rounds; derived via _init_R if not provided
-        M         : lxl MDS matrix for the linear layer; generated via _init_M if not provided
+        R         : number of rounds; derived via _init_rounds if not provided
+        M         : lxl MDS matrix for the linear layer; generated via _init_mat if not provided
         r         : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
         c         : capacity (number of inner state elements); derived if not provided
         d         : digest size (number of output elements); derived if not provided
@@ -103,17 +103,20 @@ class AnemoiParams:
         self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Rounds
-        self.R = R if R is not None else self._init_R()
+        self.R = R if R is not None else self._init_rounds()
 
         # Affine layer
-        Mx = M if M is not None else self._init_M()
+        Mx = M if M is not None else self._init_mat()
         self.Mx = map_nested(Mx, self.to_field)
         self.Mx_inv = invert_matrix(self.Mx)
 
         self.My = self._init_My_from_Mx()
         self.My_inv = invert_matrix(self.My)
 
-        self.C, self.D = self._init_rcons()  # C (x-lane) and D (y-lane)
+        self.C, self.D = self._init_cons()  # C (x-lane) and D (y-lane)
+
+        # Parameter sanitization: validate the fully-constructed (stored/derived) values
+        self._parameter_sanitization()
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers
@@ -152,6 +155,18 @@ class AnemoiParams:
         if field_bits < 31:
             warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
 
+    def _parameter_sanitization(self):
+        """Validate the fully-constructed parameter object (stored/derived values):
+        hard checks raise, recommendation deviations warn (ParamRecommendationWarning)."""
+
+        # --- Hard checks (must always hold) ---
+        if len(self.Mx) != self.l or any(len(row) != self.l for row in self.Mx):
+            raise ValueError(f"Mx must be a {self.l} x {self.l} matrix")
+        if len(self.C) != self.R or len(self.D) != self.R:
+            raise ValueError(f"C and D must have one row per round: expected {self.R}, got {len(self.C)} and {len(self.D)}")
+        if any(len(row) != self.l for row in self.C) or any(len(row) != self.l for row in self.D):
+            raise ValueError(f"each C and D row must hold {self.l} elements")
+
     # ---------------------------------------------------------------------------
     # Derivation helpers (defaults for the optional parameters)
     # ---------------------------------------------------------------------------
@@ -183,13 +198,13 @@ class AnemoiParams:
         in the characteristic-2 setting."""
         raise NotImplementedError("Round number derivation for characteristic 2 version of Anemoi not implemented")
 
-    def _init_R(self) -> int:
+    def _init_rounds(self) -> int:
         """Round number derivation formula according to Equation (2) in https://eprint.iacr.org/2022/840.pdf"""
         R = self._R_char2() if self.p == 2 else self._R_charp()  # to prevent algebraic attacks
         R += min(5, self.l + 1)  # security margin
         return max(8, R)
 
-    def _init_rcons(self):
+    def _init_cons(self):
         """C and D are built from the digits of pi using an open butterfly."""
         C, D = [], []
         pi_F_0 = self.to_field(PI_0 % self.p)
@@ -205,7 +220,7 @@ class AnemoiParams:
                 D[r].append(self.beta * pi_1_i ** 2 + pow_alpha + self.delta)
         return C, D
 
-    def _init_M(self, max_tries: int = 1000):
+    def _init_mat(self, max_tries: int = 1000):
         """Anemoi's M_x: Identity for l=1 (Anemoi's diffusion then comes from the PHT),
         low-addition matrices M_2/M_3/M_4 with the smallest working power of g for l <= 4,
         precomputed circulant rows for l > 4."""

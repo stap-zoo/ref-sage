@@ -20,7 +20,10 @@ Each primitive lives in its own folder and follows a common layout:
 
 - **`hash.py`** implements the permutation and higher-level hash modes (compression, sponge). Takes a concrete parameter instance as its constructor argument.
 - **`instances.py`** defines concrete instances (e.g. BLS12-381, BN254) by constructing a params object with the appropriate constants.
-- **`params.py`** defines the params class whose constructor validates and stores all numerical parameters. Also contains helper routines for derived values such as the MDS matrix and round constants.
+- **`params.py`** defines the params class whose constructor validates and stores all numerical parameters. Every params class implements the same five-function contract (see `myprimitive/README.md` for details):
+  - `_input_sanitization` validates the raw constructor arguments (hard checks raise, deviations from the recommended settings warn with `ParamRecommendationWarning`);
+  - `_parameter_sanitization` validates the fully-constructed object (shapes and counts of the stored/derived values) as the constructor's last step;
+  - `_init_rounds` derives the round number(s), `_init_cons` the (round) constants, and `_init_mat` the matrix, whenever the user does not pass them explicitly. Derivations that are not worked out yet exist as stubs raising `NotImplementedError("Error: Not implemented -- ...")` with a `TODO` docstring.
 
 ## Primitives
 
@@ -171,6 +174,35 @@ Each primitive lives in its own folder and follows a common layout:
       <td>Goldilocks (64 bit)</td>
       <td>12</td>
       <td>6</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td rowspan="4"><a href="https://eprint.iacr.org/2025/926">Polocolo</a></td>
+      <td><code>POLOCOLO_BLS12_381_SCALAR_T3/T4/T5/T6/T7/T8</code></td>
+      <td>BLS12-381 scalar (255 bit)</td>
+      <td>3 / 4 / 5 / 6 / 7 / 8</td>
+      <td>6 / 5 / 5 / 5 / 5 / 5</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>POLOCOLO_BLS12_381_SCALAR_T3/T4/T6/T8_TIGHT</code></td>
+      <td>BLS12-381 scalar (255 bit)</td>
+      <td>3 / 4 / 6 / 8</td>
+      <td>5 / 4 / 4 / 4</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>POLOCOLO_BN254_SCALAR_T3/T4/T5/T6/T7/T8</code></td>
+      <td>BN254 scalar (254 bit)</td>
+      <td>3 / 4 / 5 / 6 / 7 / 8</td>
+      <td>6 / 5 / 5 / 5 / 5 / 5</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td><code>POLOCOLO_BN254_SCALAR_T3/T4/T6/T8_TIGHT</code></td>
+      <td>BN254 scalar (254 bit)</td>
+      <td>3 / 4 / 6 / 8</td>
+      <td>5 / 4 / 4 / 4</td>
       <td>sponge</td>
     </tr>
     <tr>
@@ -384,7 +416,7 @@ Each primitive lives in its own folder and follows a common layout:
       <td>sponge</td>
     </tr>
     <tr>
-      <td rowspan="3">Neptune</td>
+      <td rowspan="3"><a href="https://eprint.iacr.org/2021/1695">Neptune</a></td>
       <td><code>NEPTUNE_BN254_T4</code> / <code>NEPTUNE_BLS12_T2/T4</code></td>
       <td>BN254 (254 bit) / BLS12-381 (255 bit)</td>
       <td>4 / 2 / 4</td>
@@ -420,6 +452,58 @@ Each primitive lives in its own folder and follows a common layout:
       <td>3</td>
       <td>228</td>
       <td>sponge</td>
+    </tr>
+    <tr>
+      <td rowspan="1"><a href="https://eprint.iacr.org/2021/984">Grendel</a></td>
+      <td><code>TOY_GRENDEL_65519</code> / <code>TOY_GRENDEL_65393</code></td>
+      <td>p65519 / p65393 (16 bit, toy)</td>
+      <td>2</td>
+      <td>7 / 5</td>
+      <td>sponge</td>
+    </tr>
+    <tr>
+      <td rowspan="4"><a href="https://eprint.iacr.org/2025/058">Skyscraper</a></td>
+      <td><code>SKYSCRAPER_BLS12_381_N1/N2/N3</code></td>
+      <td>BLS12-381 scalar (255 bit), GF(p^n) for n = 1/2/3</td>
+      <td>2 branches (2n elements)</td>
+      <td>18</td>
+      <td>2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>SKYSCRAPER_BN254_N1/N2/N3</code></td>
+      <td>BN254 scalar (254 bit), GF(p^n) for n = 1/2/3</td>
+      <td>2 branches (2n elements)</td>
+      <td>18</td>
+      <td>2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>SKYSCRAPER_PALLAS_N1/N2/N3</code></td>
+      <td>Pallas (255 bit), GF(p^n) for n = 1/2/3</td>
+      <td>2 branches (2n elements)</td>
+      <td>18</td>
+      <td>2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td><code>SKYSCRAPER_VESTA_N1/N2/N3</code></td>
+      <td>Vesta (255 bit), GF(p^n) for n = 1/2/3</td>
+      <td>2 branches (2n elements)</td>
+      <td>18</td>
+      <td>2-to-1 compression, sponge</td>
+    </tr>
+    <tr>
+      <td rowspan="2"><a href="https://eprint.iacr.org/2023/1045">XHash</a></td>
+      <td><code>XHASH12_GOLDILOCKS_T12</code> / <code>XHASH8_GOLDILOCKS_T12</code></td>
+      <td>Goldilocks (64 bit)</td>
+      <td>12</td>
+      <td>6</td>
+      <td>fixed-length sponge</td>
+    </tr>
+    <tr>
+      <td><code>XHASH24_M31_T24</code> / <code>XHASH16_M31_T24</code></td>
+      <td>Mersenne-31 (31 bit)</td>
+      <td>24</td>
+      <td>6</td>
+      <td>fixed-length sponge</td>
     </tr>
   </tbody>
 </table>

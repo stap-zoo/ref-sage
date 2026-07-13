@@ -139,7 +139,7 @@ def dl_m46_83_apply(x: list, alpha) -> list:
 
 def dl_m44_84_matrix(alpha) -> list[list]:
     """DL18 M^{8,4}_{4,4}: 4x4, depth 4, 8 additions, 4 multiplications.
-    Griffin's/Poseidon's M_4 with alpha = 2 (MDS for all primes p > 2^31 at alpha = 2)."""
+    Griffin's/Poseidon's/Polocolo's M_4 with alpha = 2 (MDS for all primes p > 2^31 at alpha = 2)."""
     one = alpha**0
     a, a2 = alpha, alpha * alpha
     return [[a2 + one, a2 + a + one, one,      a + one     ],
@@ -265,27 +265,132 @@ def cauchy_mds_matrix(p: int, t: int, *, xs: list[int] = None, ys: list[int] = N
         xs, ys = list(range(t)), [-t - j for j in range(t)]
     return cauchy_matrix(xs, ys, p)
 
-def tip5_mds_matrix(p: int, t: int = 16) -> list[list[int]]:
-    """Tip5's 16x16 circulant MDS matrix. The first column is the 16 little-endian 16-bit words of
-    SHA-256("Tip5") -- the 32-byte digest split into 16 two-byte words (both fixed by the spec),
-    drawn as a grid (n_bytes=2) from the XOF sampler. Entries are 16-bit by design (deliberately
-    narrower than the field), enabling delayed modular reduction. `p` is only the sampler's field;
-    since every entry is < 2^16 < p no rejection occurs, so the matrix is identical over Goldilocks
-    2^64 - 2^32 + 1 and Mersenne 2^31 - 1 (reused verbatim by Tip4 with t = 16 and Monolith-31 with
-    t = 16). For reduced state sizes t < 16 (e.g. Tip4' with t = 12) the circulant is built from the
-    first t entries of the column."""
-    if not 1 <= t <= 16:
-        raise ValueError(f"t must be in 1..16. Got {t}")
-    column = XOFFieldElementSampler(seed=b"Tip5", p=p, xof="sha256", sampling="naive", n_bytes=2).grid(1, 16)[0]
-    return circulant(col=column[:t])
+# Tip5's MDS column derivation and RPO's pinned circulant rows moved to their
+# owning primitives (tip5/params.py TIP5_MDS_COLUMN, marvellous/params.py
+# RPO_MDS_ROWS): pinned design data belongs to the primitive, only generic
+# constructions stay here.
 
-def rpo_mds_matrix(t: int) -> list[list[int]]:
-    if t == 12:
-        return circulant(row=[7, 23, 8, 26, 13, 10, 9, 7, 6, 22, 21, 8])
-    elif t == 16:
-        return circulant(row=[256, 2, 1073741824, 2048, 16777216, 128, 8, 16, 524288, 4194304, 1, 268435456, 1, 1024, 2, 8192])
-    else:
-        raise ValueError(f"t must be in {{12,16}}. Got {t}")
+def low_addition_mds_matrix(t: int, additions: int, coeff_max: int = 8, seed=None, max_trials: int = 500, attempts: int = 100) -> list[list[int]]:
+    """Search for a t x t integer MDS matrix computable with at most `additions`
+    two-term addition gates (Polocolo, https://eprint.iacr.org/2025/926, Algorithm 1 /
+    MDS_generator.sage). Every vector built below is a linear combination of the input
+    coordinates and costs exactly one gate `w = c1*u + c2*v` with coefficients in
+    [1, coeff_max]; the matrix rows are the last t vectors accepted, so the whole
+    product M*x evaluates with `additions` addition gates and only small-constant
+    multiplications.
+
+    Three stages, as in the reference:
+      1. start from the t unit vectors (free) and ceil(t/2) pairwise sums (one gate each),
+      2. expand by `additions - t - ceil(t/2)` random combinations of two previous
+         vectors (not both unit vectors), kept only if linearly independent so far,
+      3. draw the final t rows one at a time, kept only if they have no zero entry and
+         the partial matrix stays MDS-extendable (all minors of every order non-zero,
+         checked over the integers); at most max_trials draws, then restart (up to
+         `attempts` times).
+
+    The search is randomized; pass `seed` to make it reproducible. Polocolo's published
+    t = 5..8 matrices come from unseeded runs of this search, so they cannot be
+    regenerated -- they are pinned as constants in polocolo/params.py, and this function
+    is the strategy for producing matrices at other state sizes. The integer check is
+    valid over F_p as long as no minor is divisible by p (guaranteed for large p with
+    these small entries); re-verify concrete instances with is_mds over their field.
+
+    Success probability drops sharply near the minimal budget of t + ceil(t/2) + t
+    gates: a couple of gates of slack finds a matrix in well under a second, while the
+    paper's tightest published budgets (e.g. t = 6 with 17 additions) need tens of
+    thousands of `attempts` -- the authors ran open-ended searches."""
+    import random
+    from sage.all import QQ
+
+    rng = random.Random(seed)
+    n_init_gates = (t + 1) // 2
+    n_expand = additions - t - n_init_gates
+    if n_expand < t:
+        # the final rows are combinations of expansion vectors only, so the expansion
+        # stage must span the full t-dimensional space: at least t gates on top of the
+        # ceil(t/2) initial and t final ones (t = 5 with 13 additions is the paper's minimum)
+        raise ValueError(f"additions={additions} too small: need >= {n_init_gates + 2 * t} for t={t}")
+
+    def combine(u, v, c1, c2):
+        return [c1 * a + c2 * b for a, b in zip(u, v)]
+
+    def rand_coeff():
+        return rng.randrange(1, coeff_max + 1)
+
+    def int_det(m):
+        """Fraction-free (Bareiss) determinant of a small integer matrix. Pure Python:
+        the search evaluates millions of tiny minors, where the per-call overhead of
+        Sage matrices dominates by orders of magnitude."""
+        m = [row[:] for row in m]
+        n, sign, prev = len(m), 1, 1
+        for i in range(n - 1):
+            if m[i][i] == 0:
+                for r in range(i + 1, n):
+                    if m[r][i] != 0:
+                        m[i], m[r] = m[r], m[i]
+                        sign = -sign
+                        break
+                else:
+                    return 0
+            for r in range(i + 1, n):
+                for c in range(i + 1, n):
+                    m[r][c] = (m[r][c] * m[i][i] - m[r][i] * m[i][c]) // prev
+            prev = m[i][i]
+        return sign * m[-1][-1]
+
+    def minors_with_new_row_nonzero(rows):
+        """Rows before the last are assumed already validated, so only the minors
+        (of every order) that involve the newly added last row are checked."""
+        from itertools import combinations
+        last = len(rows) - 1
+        for k in range(1, len(rows) + 1):
+            for ri in combinations(range(last), k - 1):
+                for ci in combinations(range(t), k):
+                    sub = [[rows[i][j] for j in ci] for i in (*ri, last)]
+                    if int_det(sub) == 0:
+                        return False
+        return True
+
+    for _ in range(attempts):
+        # stage 1: unit vectors + ceil(t/2) pairwise sums (pairs (0,1), (2,3), ...; odd t closes with (0, t-1))
+        pool = [[int(i == j) for j in range(t)] for i in range(t)]
+        pairs = [(2 * i, 2 * i + 1) for i in range(t // 2)] + ([(0, t - 1)] if t % 2 == 1 else [])
+        for i, j in pairs:
+            pool.append(combine(pool[i], pool[j], rand_coeff(), rand_coeff()))
+
+        # stage 2: expansion vectors, linearly independent among themselves
+        expansion = []
+        while len(expansion) < n_expand:
+            idx1, idx2 = rng.randrange(len(pool)), rng.randrange(len(pool))
+            if idx1 == idx2 or (idx1 < t and idx2 < t):  # not the same, not two unit vectors
+                continue
+            v = combine(pool[idx1], pool[idx2], rand_coeff(), rand_coeff())
+            # as in the reference: keep the expansion set at full rank (min(rows, t))
+            if matrix(QQ, expansion + [v]).rank() != min(len(expansion) + 1, t):
+                continue
+            expansion.append(v)
+            pool.append(v)
+
+        # stage 3: final rows; drawn from the expansion vectors and the rows accepted so far
+        seed_pool = list(expansion)
+        rows = []
+        for _ in range(max_trials):
+            if len(rows) == t:
+                break
+            idx1, idx2 = rng.randrange(len(seed_pool)), rng.randrange(len(seed_pool))
+            if idx1 == idx2:
+                continue
+            v = combine(seed_pool[idx1], seed_pool[idx2], rand_coeff(), rand_coeff())
+            if 0 in v or not minors_with_new_row_nonzero(rows + [v]):
+                continue
+            rows.append(v)
+            seed_pool.append(v)
+
+        if len(rows) == t:
+            return rows
+
+    raise RuntimeError(f"no {t}x{t} MDS matrix with {additions} additions found "
+                       f"within {attempts} attempts of {max_trials} trials each")
 
 # ---------------------------------------------------------------------------
 # Property checks

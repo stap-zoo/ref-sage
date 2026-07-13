@@ -20,15 +20,38 @@ from types import SimpleNamespace
 
 # Math specific imports
 from math import ceil, floor, gcd, log
-from sage.all import GF, Integer, matrix, vector, flatten
+from sage.all import GF, Integer, matrix, vector, flatten, PolynomialRing
 
 # Custom imports
-from utils.matrix import vandermonde_mds_matrix, rpo_mds_matrix, map_nested, invert_matrix, circulant
+from utils.matrix import vandermonde_mds_matrix, map_nested, invert_matrix, circulant
 from utils.sampler import XOFFieldElementSampler
 from utils.complexities import gb_comp
 from utils.mode import derive_rate_capacity_digest
 from utils.field import GOLDILOCKS, MERSENNE31
-from utils.poly import poly_to_aos, map_coeffs
+from utils.poly import poly_to_aos, map_coeffs, univ_from_list, power_map_coordinate_polys, diff_polys_list
+
+# ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
+
+# RPO's circulant MDS rows (https://eprint.iacr.org/2022/1577, Section 3.1),
+# chosen so matrix-vector products can be computed fast via Karatsuba or
+# NTT-based polynomial multiplication. Reused by XHash (t = 12) and, outside
+# this module, by Tip4' (tip5/params.py imports this constant).
+RPO_MDS_ROWS = {
+    12: [7, 23, 8, 26, 13, 10, 9, 7, 6, 22, 21, 8],
+    16: [256, 2, 1073741824, 2048, 16777216, 128, 8, 16, 524288, 4194304, 1, 268435456, 1, 1024, 2, 8192],
+}
+
+# XHash's efficient MDS from a Reed-Solomon code for t = 24
+# (https://hackmd.io/@sKYgEqCsSZW5mqQfCGUHvA/SkUsv8qAZg), given as a 32x32
+# circulant row; the t = 24 instance uses the top-left t x t block.
+XHASH_MDS_M31_T32_ROW = [
+    185870542, 2144994796, 1696461115, 215190769, 930115258, 766567118, 2003379079, 1770558586,
+    1779722644, 434368282, 289154277, 1979813463, 1436360233, 1342944808, 63026005, 903393155,
+    1512525948, 105409451, 1072974295, 979558870, 436105640, 2126764826, 1981550821, 636196459,
+    645360517, 412540024, 1649351985, 1485803845, 53244687, 719457988, 270924307, 82564914,
+]
 
 # ---------------------------------------------------------------------------
 # Rescue
@@ -57,10 +80,10 @@ class RescueParams:
         t         : permutation state size
         alpha     : power-map exponent for the S-Box; smallest valid exponent via _init_alpha if not provided
         alpha_inv : power-map exponent for the inverse S-Box, i.e. alpha^{-1} mod (p-1); computed if not provided
-        R         : number of rounds; computed from kappa via _init_R if not provided
+        R         : number of rounds; computed from kappa via _init_rounds if not provided
         g         : a primitive element of GF(p) (e.g. Field.generator); _init_g if not provided
-        M         : MDS matrix (txt); generated via _init_M if not provided
-        rcons     : (2*R+1)xt round-constants; generated via _init_rcons if not provided
+        M         : MDS matrix (txt); generated via _init_mat if not provided
+        rcons     : (2*R+1)xt round-constants; generated via _init_cons if not provided
         r         : rate; derived from kappa/t via derive_rate_capacity_digest if not provided
         c         : capacity (number of inner state elements); derived if not provided
         d         : digest size (number of output elements); derived if not provided
@@ -84,15 +107,15 @@ class RescueParams:
         self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Rounds
-        self.R = R if R is not None else self._init_R()
+        self.R = R if R is not None else self._init_rounds()
 
         # Linear layer (given matrix is trimmed to txt, i.e., first t rows and cols are taken)
         self.g = g if g is not None else self._init_g()
-        self.M = map_nested([row[:self.t] for row in M[:self.t]] if M is not None else self._init_M(), self.to_field)
+        self.M = map_nested([row[:self.t] for row in M[:self.t]] if M is not None else self._init_mat(), self.to_field)
         self.M_inv = invert_matrix(self.M)
 
         # Round constants
-        self.rcons = map_nested(rcons if rcons is not None else self._init_rcons(), self.to_field)
+        self.rcons = map_nested(rcons if rcons is not None else self._init_cons(), self.to_field)
 
         # Check final object consistency
         self._parameter_sanitization()
@@ -124,17 +147,22 @@ class RescueParams:
             raise ValueError(f"state size t must be positive. Got {params.t}")
         if params.M != None and (len(params.M) < params.t or any(len(row) < params.t for row in params.M)):
             raise ValueError(f"provided matrix smaller than txt")
+
+        # --- Warnings (recommended, not required) ---
+        field_bits = int(params.p).bit_length()
+        if field_bits < 31:
+            warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
     
     def _parameter_sanitization(self):
-        """Validate the raw constructor arguments: hard checks raise, recommendation
-        deviations warn (ParamRecommendationWarning) but do not raise."""
+        """Validate the fully-constructed parameter object (stored/derived values):
+        hard checks raise, recommendation deviations warn (ParamRecommendationWarning)."""
 
         if gcd(self.alpha, self.p - 1) != 1:
             raise ValueError("power map does not define a permutation (gcd(alpha, p-1) != 1)")
 
         if (len(self.M) != self.t) or not all(len(row) == self.t for row in self.M):
             raise ValueError("M must be txt matrix")
-        
+
         # Every round is a double round (2 * R), plus final round constant addition
         if (len(self.rcons) < 2 * self.R + 1) or not all (len(ci) == self.t for ci in self.rcons):
             raise ValueError(f"round constants size wrong. Expected at least (2*R+1)xt = {(2*self.R+1)*self.t}, got {len(flatten(self.rcons))}")
@@ -155,10 +183,10 @@ class RescueParams:
     def _init_g(self) -> int:
         return self.F.multiplicative_generator()  # smallest primitive element
 
-    def _init_M(self) -> list[list[int]]:
+    def _init_mat(self) -> list[list[int]]:
         return vandermonde_mds_matrix(self.p, self.t, self.g, transpose=False)
 
-    def _init_rcons(self) -> list[list[int]]:
+    def _init_cons(self) -> list[list[int]]:
         # Round constants created via the Rescue key schedule, where key-schedule material is sampled via
         # SHAKE256, t rows at a time, until t consecutive rows form an invertible txt matrix. The two rows
         # following that block become the initial constant and the constants-schedule's additive constant.
@@ -209,7 +237,7 @@ class RescueParams:
             R += 1
         return R
 
-    def _init_R(self) -> int:
+    def _init_rounds(self) -> int:
         """Round number derivation, including 100% security margin"""
         return 2 * ceil(max(5, self._l0(), self._l1()))
 
@@ -234,29 +262,29 @@ class RescuePrimeParams(RescueParams):
             R += 1
         return R
 
-    def _init_R(self) -> int:
+    def _init_rounds(self) -> int:
         """Round number derivation, including 50% security margin"""
         # _l0 reused from Rescue, _l1 recalculated for RescuePrime
         # 50% security margin over the Groebner-basis bound.
         return ceil(1.5 * max(5, self._l0(), self._l1()))
 
-    def _init_M(self) -> list[list[int]]:
+    def _init_mat(self) -> list[list[int]]:
         return vandermonde_mds_matrix(self.p, self.t, self.g, transpose=True)
 
-    def _init_rcons(self) -> list[list[int]]:
+    def _init_cons(self) -> list[list[int]]:
         seed = f"{self.LABEL}({self.p},{self.t},{self.c},{self.kappa})".encode("ascii")
         return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_256", sampling="mod").grid(2 * self.R, self.t)
 
     def _parameter_sanitization(self):
-        """Validate the raw constructor arguments: hard checks raise, recommendation
-        deviations warn (ParamRecommendationWarning) but do not raise."""
+        """Validate the fully-constructed parameter object (stored/derived values):
+        hard checks raise, recommendation deviations warn (ParamRecommendationWarning)."""
 
         if gcd(self.alpha, self.p - 1) != 1:
             raise ValueError("power map does not define a permutation (gcd(alpha, p-1) != 1)")
 
         if (len(self.M) != self.t) or not all(len(row) == self.t for row in self.M):
             raise ValueError("M must be txt matrix")
-        
+
         # Every round is a double round (2 * R), no final round constant addition
         if (len(self.rcons) < 2 * self.R) or not all (len(ci) == self.t for ci in self.rcons):
             raise ValueError(f"round constants size wrong. Expected at least (2*R)xt = {(2*self.R)*self.t}, got {len(flatten(self.rcons))}")
@@ -273,14 +301,17 @@ class RescuePrimeOptimizedParams(RescuePrimeParams):
     """
     LABEL = "RPO"
 
-    def _init_R(self) -> int:
+    def _init_rounds(self) -> int:
         # _l0 reused from Rescue, _l1 reused from RescuePrime
         # RPO paper states that 1 round less compared to RP is fine for proposed instance
         # in XHash (https://eprint.iacr.org/2023/1045.pdf, Section 4.5) authors explicitly mention floor
         return floor(1.5 * max(5, self._l0(), self._l1()))
 
-    def _init_M(self) -> list[list[int]]:
-        return rpo_mds_matrix(self.t)
+    def _init_mat(self) -> list[list[int]]:
+        """The pinned RPO circulant (module constant RPO_MDS_ROWS, t in {12, 16})."""
+        if self.t not in RPO_MDS_ROWS:
+            raise NotImplementedError(f"Error: Not implemented -- no RPO MDS row for t={self.t} (only t in {sorted(RPO_MDS_ROWS)})")
+        return circulant(row=RPO_MDS_ROWS[self.t])
 
 # ---------------------------------------------------------------------------
 # XHASH
@@ -340,28 +371,28 @@ class XHashParams(RescuePrimeOptimizedParams):
             msg = f"TOY VERSION: This is not an officially recommended version"
             warnings.warn(msg, ParamRecommendationWarning, stacklevel=2)
 
-    def _init_M(self) -> list[list[int]]:
+    def _init_mat(self) -> list[list[int]]:
+        """The pinned matrices: RPO's circulant for t = 12 (RPO_MDS_ROWS) and the
+        Reed-Solomon 32x32 circulant's top-left t x t block for t = 24
+        (XHASH_MDS_M31_T32_ROW), matching the truncation the provided-M path
+        applies via map_nested."""
         if self.t == 12:
-            return rpo_mds_matrix(self.t)
-        elif self.t == 24:
-            # Efficient MDS from a Reed-Solomon code, given as a 32x32 circulant; the t=24
-            # instance uses its top-left t x t block (matching the truncation the provided-M
-            # path applies via map_nested).
-            full = circulant(row=[185870542, 2144994796, 1696461115, 215190769, 930115258, 766567118, 2003379079, 1770558586, 1779722644, 434368282, 289154277, 1979813463,1436360233, 1342944808, 63026005, 903393155, 1512525948, 105409451, 1072974295, 979558870, 436105640, 2126764826, 1981550821, 636196459, 645360517, 412540024, 1649351985, 1485803845, 53244687, 719457988, 270924307, 82564914])
+            return circulant(row=RPO_MDS_ROWS[12])
+        if self.t == 24:
+            full = circulant(row=XHASH_MDS_M31_T32_ROW)
             return [row[:self.t] for row in full[:self.t]]
-        else:
-            raise NotImplementedError(f"No matrix derivation strategy implemented for t = {self.t}")
+        raise NotImplementedError(f"Error: Not implemented -- no matrix derivation strategy for t = {self.t}")
 
-    def _init_rcons(self) -> list[list[int]]:
+    def _init_cons(self) -> list[list[int]]:
         # Same seed scheme as RPO, but generate exactly n_rcons rows (driven by the round
         # structure) rather than the parent's 2*R.
         seed = f"{self.LABEL}({self.p},{self.t},{self.c},{self.kappa})".encode("ascii")
         return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_256", sampling="mod").grid(self.n_rcons, self.t)
 
-    def _init_R(self) -> int:
+    def _init_rounds(self) -> int:
         """Round number derivation, including 50% security margin"""
         # One round less than RPO
-        return super()._init_R_() - 1
+        return super()._init_rounds() - 1
 
     def _init_sbox_P3(self, cpolys: list, fmod: list):
         if fmod is None and cpolys is None:
@@ -389,7 +420,7 @@ class XHashParams(RescuePrimeOptimizedParams):
         # Set coordinate polynomials
         if cpolys_derived is not None and cpolys_given is not None:
             # both supplied -> validate agreement
-            n_mondiff, n_cdiff = diff_cpolys(cpolys_derived, cpolys_given)
+            n_mondiff, n_cdiff = diff_polys_list(cpolys_derived, cpolys_given)
             if (n_mondiff, n_cdiff) != (0, 0):
                 warnings.warn("supplied cpolys do not match those derived from fmod; using fmod-derived cpolys", ParamRecommendationWarning, stacklevel=2)
             self.cpolys = cpolys_derived

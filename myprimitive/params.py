@@ -61,13 +61,13 @@ class MyPrimitiveParams:
         p     : field characteristic (prime)
         t     : state size (number of field elements)
         alpha : S-box exponent, coprime with p-1; smallest valid exponent if not provided
-        R     : number of rounds; derived from the algebraic attack complexity if not provided
+        R     : number of rounds; derived via _init_rounds() if not provided
         r     : rate (number of outer state elements absorbed/squeezed per sponge step);
                 derived from kappa/t via derive_rate_capacity_digest if not provided
         c     : capacity (number of inner state elements); derived if not provided
         d     : digest size (number of output elements); derived if not provided
-        M     : t x t MDS matrix for the linear layer; generated via _init_mds() if not provided
-        rcons : round constants; generated via _init_rcons() if not provided
+        M     : t x t MDS matrix for the linear layer; generated via _init_mat() if not provided
+        rcons : round constants; generated via _init_cons() if not provided
         kappa : target security level in bits (default 128)
         """
 
@@ -91,16 +91,19 @@ class MyPrimitiveParams:
         self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Round number: given round number or derived one
-        self.R = R if R is not None else self._init_R()
+        self.R = R if R is not None else self._init_rounds()
 
         # Linear layer: any values associated to linear layer
         # Matrices are generated/provided as list[list[int]], and transformed to list[list[FieldElement]] via map_nested
-        self.M = map_nested(M if M is not None else self._init_M(), self.to_field)
+        self.M = map_nested(M if M is not None else self._init_mat(), self.to_field)
         self.M_inv = invert_matrix(self.M)
 
         # Round constants: any values associated to round constant addition
         # Round constants are typically generated/provided as list[int], and transformed to list[FieldElement] via map_nested
-        self.rcons = map_nested(rcons if rcons is not None else self._init_rcons(), self.to_field)
+        self.rcons = map_nested(rcons if rcons is not None else self._init_cons(), self.to_field)
+
+        # Parameter sanitization: validate the fully-constructed (stored/derived) values
+        self._parameter_sanitization()
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers to provide common framework for all functions
@@ -150,22 +153,45 @@ class MyPrimitiveParams:
             msg = f"TOY VERSION: field is only {field_bits} bits"
             warnings.warn(msg, ParamRecommendationWarning, stacklevel=2)
 
+    def _parameter_sanitization(self):
+        """Validate the fully-constructed parameter object (stored/derived values).
+
+        Runs at the END of __init__, after every _init_* helper has filled in the
+        missing values -- the counterpart to the pre-construction _input_sanitization.
+        Same split as there:
+          * hard checks -- structural invariants of the stored values (shapes,
+                           counts, permutation properties); raise on failure.
+          * warnings    -- derived values that deviate from the recommended
+                           settings; warn with ParamRecommendationWarning.
+        """
+
+        # --- Hard checks (must always hold) ---
+        if len(self.M) != self.t or any(len(row) != self.t for row in self.M):
+            raise ValueError(f"M must be a {self.t} x {self.t} matrix")
+        if len(self.rcons) != self.R:
+            raise ValueError(f"rcons must have one row per round: expected {self.R}, got {len(self.rcons)}")
+        if any(len(row) != self.t for row in self.rcons):
+            raise ValueError(f"each rcons row must hold {self.t} elements")
+
+        # --- Warnings (recommended, not required) ---
+        # Example: warn if a derived value ends up outside the analyzed range.
+
     # ---------------------------------------------------------------------------
     # Derivation helpers (defaults for the optional parameters)
     # ---------------------------------------------------------------------------
-    
+
     def _init_alpha(self) -> int:
         """Smallest exponent >= 3 that is coprime with p-1 (i.e. an invertible S-box)."""
         for alpha in range(3, self.p):
             if gcd(alpha, self.p - 1) == 1:
                 return alpha
 
-    def _init_R(self) -> int:
+    def _init_rounds(self) -> int:
         """Derive round numbers to resist known attacks.
-        TODO: replace with your primitives rounds number derivation strategy."""
-        raise NotImplementedError("Round number derivation not implemented")
+        TODO: replace with your primitive's round number derivation strategy."""
+        raise NotImplementedError("Error: Not implemented -- round number derivation for MyPrimitive")
 
-    def _init_M(self) -> list[list[int]]:
+    def _init_mat(self) -> list[list[int]]:
         """Return a t x t MDS matrix over F.
         TODO: replace with your primitive's matrix construction (e.g. a circulant
         search, a Cauchy matrix, or a fixed low-addition family). If you follow a generic
@@ -173,7 +199,7 @@ class MyPrimitiveParams:
         utils/matrix.py and import. Example: cauchy_mds_matrix(self.p, self.t)."""
         return simple_circulant_matrix(self.t)
 
-    def _init_rcons(self):
+    def _init_cons(self):
         """Return the round constants as an R x t grid (one t-vector per round, indexed rcons[r]).
         TODO: replace with your primitive's round-constant derivation (e.g. from the
         digits of pi, a fixed seed, or a counter-based construction). Many primitives use

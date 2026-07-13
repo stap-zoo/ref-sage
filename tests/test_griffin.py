@@ -6,9 +6,11 @@
 #   4.1 KATs         -- fixed input/output vectors (permutation)
 #   4.2 Roundtrip    -- permutation_inv undoes permutation (and per-layer)
 #   4.3 Consistency  -- determinism, distinct inputs -> distinct outputs, sizes
-#   4.4 Algebraic    -- component identities (linear layer matches matrix)
-#   4.5 Misc         -- validation/errors, reproducibility
+#   4.4 Algebraic    -- component identities, derivation vs. pinned instance
+#   4.5 Misc         -- validation/errors, warnings, reproducibility
 # ---------------------------------------------------------------------------
+
+import warnings
 
 import pytest
 
@@ -23,6 +25,7 @@ from griffin.instances import (
 )
 from utils.matrix import matvecmul
 from utils.field import BN254_SCALAR, BLS12_381_SCALAR, ST, GOLDILOCKS
+from recommendations import ParamRecommendationWarning
 
 INSTANCES = [
     ("BN254_T3", GRIFFIN_BN254_T3),
@@ -34,7 +37,7 @@ INSTANCES = [
 
 # ---------------------------------------------------------------------------
 # 4.1 Known-answer test vectors (self-derived: input = [0, 1, ..., t-1], constants
-# are deterministically derived via GriffinParams._init_constants, so this KAT
+# are deterministically derived via GriffinParams._init_cons, so this KAT
 # is reproducible from (p, t, R, alpha) alone)
 # ---------------------------------------------------------------------------
 
@@ -200,14 +203,45 @@ def test_affine(field_name, field, alpha, t):
 # PolynomialRing) once a Griffin-specific degree bound is settled.
 
 
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_generated_matches_instance(name, params):
+    # Rebuilding the params without M / constants must reproduce the pinned instance.
+    derived = GriffinParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
+                            r=params.r, c=params.c, d=params.d)
+    assert derived.M == params.M
+    assert derived.rcons == params.rcons
+    assert derived.coeffs_G == params.coeffs_G
+
+
+@pytest.mark.skip(reason="_init_rounds is a stub (round number derivation not implemented for Griffin)")
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_rounds_derivation_matches_instance(name, params):
+    derived = GriffinParams(p=params.p, t=params.t, alpha=params.alpha,
+                            r=params.r, c=params.c, d=params.d)  # R omitted -> _init_rounds
+    assert derived.R == params.R
+
+
 # ---------------------------------------------------------------------------
-# 4.5 Misc: validation, reproducibility
+# 4.5 Misc: validation, warnings, reproducibility
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
     prim = Griffin(GRIFFIN_BN254_T3)
     with pytest.raises(ValueError):
         prim.permutation([prim.F.zero()] * (prim.t + 1))
+
+
+def test_toy_field_warns():
+    with pytest.warns(ParamRecommendationWarning):
+        GriffinParams(p=101, t=3, alpha=3, R=4, r=2, c=1, d=1)  # tiny field
+
+
+@pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
+def test_recommended_instance_no_warning(name, params):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ParamRecommendationWarning)
+        GriffinParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
+                      r=params.r, c=params.c, d=params.d)
 
 
 def test_constants_reproducible():

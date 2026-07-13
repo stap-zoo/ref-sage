@@ -12,11 +12,11 @@
 # ---------------------------------------------------------------------------
 
 # Structural imports
+import warnings
 from recommendations import ParamRecommendationWarning
 from types import SimpleNamespace
 
 # Math specific imports
-import warnings
 from math import gcd
 from sage.all import GF, Integer, legendre_symbol
 
@@ -25,14 +25,23 @@ from utils.matrix import m4_to_block_circulant_matrix, circulant, map_nested, in
 from utils.sampler import XOFFieldElementSampler
 from utils.mode import derive_rate_capacity_digest
 
+# ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
+
+# Pinned mixing matrix for t = 3 (https://eprint.iacr.org/2022/403, Section 4.2);
+# every other official state size (t a multiple of 4) uses the generic
+# M4-block-circulant construction in _init_mat.
+GRIFFIN_M = {3: circulant([2, 1, 1])}
+
 
 class GriffinParams:
     def __init__(
         self,
         p:         int,
         t:         int,
-        R:         int,
         alpha:     int,
+        R:         int = None,
         alpha_inv: int = None,
         rcons:     list[list[int]] = None,
         coeffs_G:  list[list[int]] = None,
@@ -47,12 +56,12 @@ class GriffinParams:
         ----------
         p         : field characteristic (prime)
         t         : permutation state size; must be 3 or a multiple of 4
-        R         : number of rounds
         alpha     : non-linear layer exponent (3, 5, or 7)
+        R         : number of rounds; derived via _init_rounds if not provided (not yet implemented)
         alpha_inv : alpha^{-1} mod (p-1); computed via _init_alpha_inv if not provided
         rcons     : (R-1)xt round constants (the final round has none); generated via SHAKE128 if not provided
         coeffs_G  : (t-2) [a, b] pairs for the quadratic maps G_i; generated via SHAKE128 if not provided
-        M         : mixing matrix (txt); generated via _init_M if not provided
+        M         : mixing matrix (txt); generated via _init_mat if not provided
         r         : rate (number of outer state elements absorbed/squeezed per sponge step);
                     derived from kappa/t via derive_rate_capacity_digest if not provided
         c         : capacity (number of inner state elements); derived if not provided
@@ -69,15 +78,15 @@ class GriffinParams:
         self.t = t
         self.kappa = kappa
 
-        # Rounds (set before _init_constants, whose derivation depends on R)
-        self.R = R
+        # Rounds (set before _init_cons, whose derivation depends on R)
+        self.R = R if R is not None else self._init_rounds()
 
         # Non-linear layer
         self.alpha = alpha
         self.alpha_inv = alpha_inv if alpha_inv is not None else self._init_alpha_inv()
         # rcons and coeffs_G share one SHAKE128 stream, so they are derived together.
         if rcons is None or coeffs_G is None:
-            _rcons, _coeffs_G = self._init_constants()
+            _rcons, _coeffs_G = self._init_cons()
             rcons = rcons if rcons is not None else _rcons
             coeffs_G = coeffs_G if coeffs_G is not None else _coeffs_G
         self.coeffs_G = map_nested(coeffs_G, self.to_field)
@@ -86,12 +95,15 @@ class GriffinParams:
         self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Linear layer
-        self.M = map_nested(M if M is not None else self._init_M(), self.to_field)
+        self.M = map_nested(M if M is not None else self._init_mat(), self.to_field)
         self.M_inv = invert_matrix(self.M)
 
         # Round constants: pad with a zero row so AffineLayer can uniformly index
         # rcons[round_idx] for round_idx in 0..R-1 (the final round has none).
         self.rcons = map_nested(rcons, self.to_field) + [[self.F.zero()] * self.t]
+
+        # Parameter sanitization: validate the fully-constructed (stored/derived) values
+        self._parameter_sanitization()
 
     # ---------------------------------------------------------------------------
     # Small field conversion helpers
@@ -127,20 +139,40 @@ class GriffinParams:
         if field_bits < 31:
             warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
 
+    def _parameter_sanitization(self):
+        """Validate the fully-constructed parameter object (stored/derived values):
+        hard checks raise, recommendation deviations warn (ParamRecommendationWarning)."""
+
+        # --- Hard checks (must always hold) ---
+        if len(self.M) != self.t or any(len(row) != self.t for row in self.M):
+            raise ValueError(f"M must be a {self.t} x {self.t} matrix")
+        if len(self.rcons) != self.R or any(len(row) != self.t for row in self.rcons):
+            raise ValueError(f"rcons (incl. the zero padding row) must be an {self.R} x {self.t} grid")
+        if len(self.coeffs_G) != self.t - 2 or any(len(pair) != 2 for pair in self.coeffs_G):
+            raise ValueError(f"coeffs_G must hold {self.t - 2} [a, b] pairs")
+
     # ---------------------------------------------------------------------------
     # Derivation helpers (defaults for the optional parameters)
     # ---------------------------------------------------------------------------
 
+    def _init_rounds(self) -> int:
+        """Derive the round number from the target security level kappa.
+        TODO: implement the round-number criterion of the Griffin paper
+        (https://eprint.iacr.org/2022/403, Section 5: Groebner basis bound with
+        a 20% security margin); until then R must be passed explicitly."""
+        raise NotImplementedError("Error: Not implemented -- round number derivation for Griffin")
+
     def _init_alpha_inv(self) -> int:
         return pow(self.alpha, -1, self.p - 1)
 
-    def _init_M(self) -> list[list[int]]:
-        if self.t == 3:
-            return circulant([2, 1, 1])
-        else:
-            return m4_to_block_circulant_matrix(self.t)
+    def _init_mat(self) -> list[list[int]]:
+        """The pinned t = 3 matrix (module constant GRIFFIN_M), otherwise the
+        generic M4 block-circulant construction for t a multiple of 4."""
+        if self.t in GRIFFIN_M:
+            return GRIFFIN_M[self.t]
+        return m4_to_block_circulant_matrix(self.t)
 
-    def _init_constants(self):
+    def _init_cons(self):
         """Derive the (R-1)xt round constants and the (t-2) quadratic-map [a, b] pairs from one
         SHAKE128 stream seeded with "Griffin" || p (little-endian 64-bit limbs)."""
         # Initialize the sampler, seeded with "Griffin" followed by the field characteristic serialized as little-endian 64-bit limbs.

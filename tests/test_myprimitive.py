@@ -11,6 +11,8 @@
 #   4.5 Misc         -- validation/errors, warnings, reproducibility, ...
 # ---------------------------------------------------------------------------
 
+import warnings
+
 import pytest
 
 from myprimitive.hash import MyPrimitive
@@ -204,6 +206,32 @@ def test_matrix_is_mds_and_invertible(name, params):
     assert [list(c) for c in zip(*prod)] == ident
 
 
+# Derivation vs. pinned instance: rebuilding the params WITHOUT the optional
+# values must reproduce exactly what instances.py stores. This ties the _init_*
+# generation code to the published constants.
+def test_generated_matches_instance():
+    inst = MYPRIMITIVE_GOLDILOCKS_T3
+    derived = MyPrimitiveParams(
+        p=inst.p, t=inst.t, alpha=inst.alpha, R=inst.R,
+        r=inst.r, c=inst.c, d=inst.d,
+    )  # M and rcons omitted -> _init_mat / _init_cons
+    assert derived.M == inst.M
+    assert derived.rcons == inst.rcons
+
+
+# When the feature under test is a stub, the test is still written in full and
+# deactivated with a skip marker naming the blocker (never commented out), so
+# the gap shows up in every pytest run (-rs lists the reasons).
+@pytest.mark.skip(reason="_init_rounds is a stub (round number derivation not implemented)")
+def test_rounds_derivation_matches_instance():
+    inst = MYPRIMITIVE_GOLDILOCKS_T3
+    derived = MyPrimitiveParams(
+        p=inst.p, t=inst.t, alpha=inst.alpha,
+        r=inst.r, c=inst.c, d=inst.d,
+    )  # R omitted -> _init_rounds
+    assert derived.R == inst.R
+
+
 # test_symbolic_degree (the whole-permutation degree check, ~alpha**R) is intentionally
 # removed: this template's nonlinear_layer applies the INVERSE map x**alpha_inv on odd rounds
 # (to demonstrate round-dependent behaviour), so the full-permutation symbolic degree is
@@ -236,6 +264,17 @@ def test_alpha_must_be_permutation():
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
         MyPrimitiveParams(p=101, t=3, alpha=3, R=1, r=2, c=1, d=1)  # tiny field
+
+
+def test_recommended_instance_no_warning():
+    # A recommended instance must construct without any recommendation warning.
+    inst = MYPRIMITIVE_GOLDILOCKS_T3
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ParamRecommendationWarning)
+        MyPrimitiveParams(
+            p=inst.p, t=inst.t, alpha=inst.alpha, R=inst.R,
+            r=inst.r, c=inst.c, d=inst.d,
+        )
 
 
 def test_constants_reproducible():
