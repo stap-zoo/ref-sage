@@ -4,13 +4,14 @@
 #
 # Constructed from a fully-specified PolocoloParams object; this class only
 # *applies* the parameters, never derives or validates them. The design goal is
-# fidelity to the specification (https://eprint.iacr.org/2025/926, Section 4.2):
+# fidelity to the specification (https://eprint.iacr.org/2025/926, Section 4.2),
+# not speed.
 #
-#   Polocolo_pi = LinLayer^(R) o SBoxLayer o ... o LinLayer^(1) o SBoxLayer o LinLayer^(0)
-#
-# where LinLayer^(i)(x) = M*x + c^(i) with c^(R) = 0 (so the final layer is the
-# bare matrix, realised here as the post-rounds step) and SBoxLayer applies the
-# power-residue S-box S(x) = x^{-1} * T[x^((p-1)/m)] to every state element.
+# The nonlinear layer applies the power-residue S-box 
+# 
+#   S(x) = x^{-1} * T[x^((p-1)/m)] 
+# 
+# to every state element.
 #
 # NOTE: the S-box (_sbox / _sbox_inv) is a lookup-table component: it keys a
 # precomputed table by the integer value of the power residue x^((p-1)/m). It is
@@ -73,7 +74,6 @@ class Polocolo:
         return vecsub(state, self.rcons[r])
 
     def linear_layer(self, state: list, r: int) -> list:
-        # Round-independent (the same MDS matrix in every layer), so r is unused.
         return matvecmul(self.M, state)
 
     def linear_layer_inv(self, state: list, r: int) -> list:
@@ -106,7 +106,7 @@ class Polocolo:
         return y ** (self.p - 2) * self.LUT_inv[self.from_field(y ** self.ann)]
 
     def nonlinear_layer(self, state: list, r: int) -> list:
-        # SBoxLayer(x) = (S(x_1), ..., S(x_t)); round-independent, so r is unused.
+        # Substitution step: the S-box is applied to every state element.
         return [self._sbox(x) for x in state]
 
     def nonlinear_layer_inv(self, state: list, r: int) -> list:

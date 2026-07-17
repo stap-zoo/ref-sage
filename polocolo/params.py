@@ -128,7 +128,7 @@ class PolocoloParams:
         M           : t x t MDS matrix of the linear layer; the published matrix for t if not provided
         rcons       : R x t round constants c^(0), ..., c^(R-1) (c^(R) = 0 is fixed by the design
                       and not stored); generated via _init_cons (SHAKE128) if not provided
-        g           : generator of F_p^*; taken from utils/field.py (or computed) if not provided
+        g           : generator of F_p^*; smallest one if not provided
         field_label : field name in the round-constant seed ("BLS12" / "BN254" for the official
                       fields); derived from p if not provided
         r           : rate (number of outer state elements absorbed/squeezed per sponge step);
@@ -155,7 +155,7 @@ class PolocoloParams:
         # "annihilator" exponent (p-1)/m: raising to it annihilates the subgroup of m-th
         # powers {g^(qm)} -> 1, leaving only the residue-class part g^(r(p-1)/m); i.e.
         # x^ann is the m-th power residue (x/p)_m of Eq. (1).
-        self.g = g if g is not None else self._init_g()
+        self.g = self.to_field(g) if g is not None else self.F.multiplicative_generator()
         self.m = m if m is not None else self._init_m()
         self.ann = (p - 1) // self.m
         self.sigma = list(sigma) if sigma is not None else self._init_sigma()
@@ -250,10 +250,6 @@ class PolocoloParams:
     def _init_field_label(self) -> str:
         """Field label for official instances. Fallback to the decimal characteristic."""
         return FIELD_LABELS.get(self.p, str(self.p))
-
-    def _init_g(self) -> int:
-        """The (smallest) generator of F_p^*."""
-        return find_smallest_generator(self.p)
 
     def _init_m(self) -> int:
         """The recommended power-residue order for (t, tight) from Table 1 / Table 7;
