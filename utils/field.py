@@ -44,13 +44,10 @@ def sage_factor(n: int) -> dict[int, int]:
 
 def find_smallest_generator(p: int, n: int = 1) -> int:
     """Return the smallest primitive root modulo p (prime field, n=1 only)."""
+    from sage.all import GF
     if n != 1:
         raise NotImplementedError("primitive element search for n>1 not implemented")
-    factors = sage_factor(p**n - 1)
-    for g in range(2, p):
-        if all(pow(g, (p - 1) // q, p) != 1 for q in factors):
-            return g
-    raise ValueError(f"no primitive root found for p={p}")
+    return int(GF(p).multiplicative_generator())
 
 
 # ---------------------------------------------------------------------------
