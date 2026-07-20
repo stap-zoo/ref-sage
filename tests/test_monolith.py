@@ -260,7 +260,7 @@ def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
         MonolithParams(p=8191, t=4, R=3, u=2, si=[128, 128],
                        M=[[1, 2, 3, 4], [4, 1, 2, 3], [3, 4, 1, 2], [2, 3, 4, 1]],
-                       r=2, c=2, d=2)
+                       r=2, c=2, d=2, toy=True)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])

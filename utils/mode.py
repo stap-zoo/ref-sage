@@ -5,30 +5,67 @@ Turns a fixed-width permutation into a hash/compression function: sponge constru
 the padding rules they use, and rate/capacity/digest derivation.
 """
 
+# Structural imports
+from recommendations import recommend
+
+# Math specific imports
+from math import ceil, log2
+
+# Custom imports
 from utils.matrix import add_to_start, replace_start
 
 # ---------------------------------------------------------------------------
-# Rate / capacity / digest derivation
+# Mode parameters: derivation and checks
 # ---------------------------------------------------------------------------
 
-def derive_rate_capacity_digest(kappa: int, t: int, r: int = None, c: int = None, d: int = None) -> tuple[int, int, int]:
-    """Resolve the sponge/compression parameters (rate r, capacity c, digest size d) for a state of
-    size t at security level kappa. The derivation of any omitted value from kappa, t (and the values
-    that ARE given) is the same sponge/compression security relation for every primitive, so it lives
-    here once rather than in each params class.
+def get_min_capacity(kappa: int, p: int) -> int:
+    """Capacity elements for a kappa-bit target, from the sponge bound c*log2(p) >= 2*kappa
+    (2x = birthday half). Uses ceil(log2 p) as bits/element (the honest per-element budget;
+    real log2p can leave the exact count a sub-bit short and force an extra element) and
+    round not ceil (snap to the nearest element count rather than always inflating past target)."""
+    pbits = ceil(log2(p))
+    return max(1, round(2 * kappa / pbits))
 
-    If all three are provided they are returned unchanged (and the t == r + c sponge invariant is
-    checked); if any is omitted, it must be derived -- which is not yet implemented.
-    """
-    if r is not None and c is not None and d is not None:
-        if r + c != t:
-            raise ValueError(f"sponge invariant violated: r + c = {r + c} != t = {t}")
-        return r, c, d
-    # TODO: derive the missing rate/capacity/digest from kappa, t (and any provided r/c/d) via the
-    # sponge/compression security bound (capacity ~ 2*kappa bits, rate r = t - c, digest d from kappa).
-    raise NotImplementedError(
-        "Error: Not implemented -- automatic rate/capacity/digest derivation; pass r, c, d explicitly"
-    )
+def get_min_digest(kappa: int, p: int) -> int:
+    """Smallest collision-resistant output: d*ceil(log2 p)/2 >= kappa, i.e. the birthday
+    bound on the output itself must clear the target. Same 2*kappa budget and rounding as
+    get_min_capacity."""
+    pbits = ceil(log2(p))
+    return max(1, round(2 * kappa / pbits))
+
+def resolve_sponge_params(kappa: int, p: int, t: int, r: int = None, c: int = None, d: int = None, toy: bool = False) -> tuple[int, int, int]:
+    """Resolve the sponge parameters (rate r, capacity c, digest d) for a state of size t at
+    preimage- and collision-security level kappa over Fp. Any omitted value is derived from the sponge
+    bound (get_min_capacity / get_min_digest); any provided value is validated. toy=True downgrades
+    the capacity/digest floor checks below from a hard error to a warning."""
+    c_min = get_min_capacity(kappa, p)
+    d_min = get_min_digest(kappa, p)
+    pbits = ceil(log2(p))
+
+    # capacity and rate are tied by r + c = t: fix one, the other follows
+    c = c_min if c is None else c
+    r = t - c if r is None else r
+    d = d_min if d is None else d
+
+    # structural invariant
+    if r + c != t:
+        raise ValueError(f"sponge invariant violated: r + c = {r + c} != t = {t}")
+    if min(r, c, d) < 1:
+        raise ValueError(f"need r, c, d >= 1; got r={r}, c={c}, d={d}")
+
+    # collision-security floors at kappa bits
+    if c < c_min:
+        recommend(f"capacity c={c} ({c * pbits} bits) below {kappa}-bit floor c_min={c_min}", toy)
+    if d < d_min:
+        recommend(f"digest d={d} ({d * pbits} bits) below {kappa}-bit floor d_min={d_min}", toy)
+
+    # rate must not undercut the capacity
+    if r < c:
+        raise ValueError(f"rate r={r} < capacity c={c}; state too small (need t >= c + c = {2 * c}, got t={t})")
+
+    return r, c, d
+
+
 
 # ---------------------------------------------------------------------------
 # Compression modes

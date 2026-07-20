@@ -211,7 +211,7 @@ def test_invalid_state_size():
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        RescuePrimeParams(p=101, t=3, r=2, c=1, d=1)  # tiny field
+        RescuePrimeParams(p=101, t=3, r=2, c=1, d=1, toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])

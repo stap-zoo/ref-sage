@@ -190,7 +190,7 @@ AFFINE_CASES = [
     ids=[f"{fn} t={t} alpha={a}" for fn, _, a, t in AFFINE_CASES],
 )
 def test_linear_layer_matches_matrix(field_name, field, alpha, t):
-    params = MyPrimitiveParams(p=field.p, t=t, alpha=alpha, R=1, r=t - 1, c=1, d=1)
+    params = MyPrimitiveParams(p=field.p, t=t, alpha=alpha, R=1, r=t - 1, c=1, d=1, kappa=field.bits // 2) # capacity/digest holds 2*kappa bits
     prim = MyPrimitive(params)
     inp = [prim.F.random_element() for _ in range(t)]
     assert prim.linear_layer(inp, params.R - 1) == matvecmul(prim.M, inp)
@@ -213,7 +213,7 @@ def test_generated_matches_instance():
     inst = MYPRIMITIVE_GOLDILOCKS_T3
     derived = MyPrimitiveParams(
         p=inst.p, t=inst.t, alpha=inst.alpha, R=inst.R,
-        r=inst.r, c=inst.c, d=inst.d,
+        r=inst.r, c=inst.c, d=inst.d, kappa=inst.kappa, toy=inst.toy,
     )  # M and rcons omitted -> _init_mat / _init_cons
     assert derived.M == inst.M
     assert derived.rcons == inst.rcons
@@ -263,7 +263,7 @@ def test_alpha_must_be_permutation():
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        MyPrimitiveParams(p=101, t=3, alpha=3, R=1, r=2, c=1, d=1)  # tiny field
+        MyPrimitiveParams(p=101, t=3, alpha=3, R=1, r=2, c=1, d=1, toy=True)  # tiny field
 
 
 def test_recommended_instance_no_warning():
@@ -273,13 +273,13 @@ def test_recommended_instance_no_warning():
         warnings.simplefilter("error", ParamRecommendationWarning)
         MyPrimitiveParams(
             p=inst.p, t=inst.t, alpha=inst.alpha, R=inst.R,
-            r=inst.r, c=inst.c, d=inst.d,
+            r=inst.r, c=inst.c, d=inst.d, kappa=inst.kappa, toy=inst.toy,
         )
 
 
 def test_constants_reproducible():
     # Same parameters -> identical derived constants and matrix.
-    a = MyPrimitiveParams(p=GOLDILOCKS.p, t=3, alpha=GOLDILOCKS.alpha, R=4, r=2, c=1, d=1)
-    b = MyPrimitiveParams(p=GOLDILOCKS.p, t=3, alpha=GOLDILOCKS.alpha, R=4, r=2, c=1, d=1)
+    a = MyPrimitiveParams(p=GOLDILOCKS.p, t=3, alpha=GOLDILOCKS.alpha, R=4, r=2, c=1, d=1, kappa=GOLDILOCKS.bits // 2) # capacity/digest holds 2*kappa bits
+    b = MyPrimitiveParams(p=GOLDILOCKS.p, t=3, alpha=GOLDILOCKS.alpha, R=4, r=2, c=1, d=1, kappa=GOLDILOCKS.bits // 2) # capacity/digest holds 2*kappa bits
     assert a.rcons == b.rcons
     assert a.M == b.M

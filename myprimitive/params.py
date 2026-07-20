@@ -15,8 +15,7 @@
 # ---------------------------------------------------------------------------
 
 # Structural imports
-import warnings
-from recommendations import ParamRecommendationWarning
+from recommendations import recommend
 from types import SimpleNamespace
 
 # Math specific imports
@@ -25,7 +24,7 @@ from sage.all import GF, Integer
 
 # Custom imports
 from utils.matrix import map_nested, invert_matrix, simple_circulant_matrix
-from utils.mode import derive_rate_capacity_digest
+from utils.mode import resolve_sponge_params
 # Add any other helpers your primitive needs, e.g.:
 # from complexities import gb_comp
 # from utils import circulant, XOFFieldElementSampler
@@ -46,14 +45,17 @@ class MyPrimitiveParams:
         self,
         p:     int,
         t:     int,
-        r:     int = None,
-        c:     int = None,
-        d:     int = None,
         alpha: int = None,
         R:     int = None,
         M:     list[list[int]] = None,
         rcons: list[list[int]] = None,
+        # Sponge parameters (derived if not provided)
+        r:     int = None,
+        c:     int = None,
+        d:     int = None,
+        # Target security level (default 128 bits)
         kappa: int = 128,
+        toy: bool = False,
     ):
         """
         Parameters
@@ -62,33 +64,31 @@ class MyPrimitiveParams:
         t     : state size (number of field elements)
         alpha : S-box exponent, coprime with p-1; smallest valid exponent if not provided
         R     : number of rounds; derived via _init_rounds() if not provided
-        r     : rate (number of outer state elements absorbed/squeezed per sponge step);
-                derived from kappa/t via derive_rate_capacity_digest if not provided
-        c     : capacity (number of inner state elements); derived if not provided
-        d     : digest size (number of output elements); derived if not provided
         M     : t x t MDS matrix for the linear layer; generated via _init_mat() if not provided
         rcons : round constants; generated via _init_cons() if not provided
+        r     : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
+        c     : capacity (number of inner state elements for sponge); derived if not provided
+        d     : digest size for generic fixed-output sponge (number of output elements); derived if not provided
         kappa : target security level in bits (default 128)
+        toy   : if True, recommendation-level checks warn instead of raising (default False)
         """
 
-        # Input sanitization
+        # Input sanitization: validate the raw constructor arguments 
         MyPrimitiveParams._input_sanitization(SimpleNamespace(**{k: v for k, v in locals().items() if k != "self"}))
 
-        # General settings
+        # General settings: store the field, state size, and security level
         self.p = p
         self.F = GF(p)
         self.t = t
         self.kappa = kappa
+        self.toy = toy
+
+        # Sponge parameters: derive r, c, d from kappa, p, t if not provided
+        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
 
         # Non-linear layer: any values associated to non-linear layer
         self.alpha = alpha if alpha is not None else self._init_alpha()
         self.alpha_inv = pow(self.alpha, -1, p - 1)
-
-        # Hash modes: values specific to sponge/compression modes defined in hash.py.
-        # r, c, d are always optional; any omitted value is filled in by the shared
-        # derive_rate_capacity_digest helper (the same sponge/compression security relation
-        # for every primitive), rather than per-primitive _init_r/_init_c/_init_d.
-        self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Round number: given round number or derived one
         self.R = R if R is not None else self._init_rounds()
@@ -146,12 +146,13 @@ class MyPrimitiveParams:
             raise ValueError(f"power map does not define a permutation")
  
         # --- Warnings (recommended, not required) ---
-        # Example: a small field is fine for a toy / cryptanalysis instance but is
-        # not secure (or not analyzed) for real use, so warn instead of refusing it.
+        # Example: a small field is fine for an explicit toy=True / cryptanalysis instance
+        # (warns) but is not secure (or not analyzed) for real use, so non-toy instances
+        # refuse it outright instead of silently constructing an insecure "real" instance.
         field_bits = int(params.p).bit_length()
         if field_bits < 31:
             msg = f"TOY VERSION: field is only {field_bits} bits"
-            warnings.warn(msg, ParamRecommendationWarning, stacklevel=2)
+            recommend(msg, params.toy)
 
     def _parameter_sanitization(self):
         """Validate the fully-constructed parameter object (stored/derived values).

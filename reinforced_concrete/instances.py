@@ -73,8 +73,8 @@ RC_BLS12_T3 = ReinforcedConcreteParams(
     COEFFS=RC_BLS12_AB,
     t=3,
     M=circulant([2, 1, 1]),
-    r=1,
-    c=2,
+    r=2,
+    c=1,
     d=1,
 )
 

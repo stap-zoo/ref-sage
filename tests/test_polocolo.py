@@ -16,7 +16,7 @@
 # ---------------------------------------------------------------------------
 
 import warnings
-from math import log2
+from math import ceil, log2
 
 import pytest
 from sage.all import GF
@@ -1369,7 +1369,7 @@ def _toy_params():
     # p = 113: 112 = 16 * 7, so m = 16 is a valid power-of-two residue order
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ParamRecommendationWarning)
-        return PolocoloParams(p=113, t=3, m=16, R=3, r=2, c=1, d=1)
+        return PolocoloParams(p=113, t=3, m=16, R=3, r=2, c=1, d=1, toy=True)
 
 
 def test_toy_sbox_is_a_permutation():
@@ -1434,7 +1434,7 @@ def test_init_mat_fallback_warns_and_is_mds():
     # probability at the starting budget collapses (e.g. t = 8 typically
     # escalates twice before finding a matrix).
     with pytest.warns(ParamRecommendationWarning):
-        params = PolocoloParams(p=113, t=2, m=16, R=3, r=1, c=1, d=1)
+        params = PolocoloParams(p=113, t=2, m=16, R=3, r=1, c=1, d=1, kappa=ceil(log2(113))*2, toy=True) # capacity/digest holds 2*kappa bits
     assert is_mds(params.M)
 
 
@@ -1472,7 +1472,7 @@ def test_recommended_instance_constructs_without_warnings():
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        PolocoloParams(p=113, t=3, m=16, R=3, r=2, c=1, d=1)
+        PolocoloParams(p=113, t=3, m=16, R=3, r=2, c=1, d=1, toy=True)
 
 
 def test_non_recommended_m_warns():

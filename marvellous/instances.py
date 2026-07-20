@@ -17,18 +17,18 @@ from utils.matrix import circulant
 # Rescue
 # ---------------------------------------------------------------------------
 
-# t=3 instances (kappa=128, c=1)
+# t=3 instances (kappa=128, c=d=1)
 
 RESCUE_BLS12_T3 = RescueParams(
     p=BLS12_381_SCALAR.p,
     t=3,
     alpha=BLS12_381_SCALAR.alpha,
     alpha_inv=BLS12_381_SCALAR.alpha_inv,
-    kappa=128,
+    g=BLS12_381_SCALAR.generator,
     r=2,
     c=1,
-    g=BLS12_381_SCALAR.generator,
-    d=2,
+    d=1,
+    kappa=128,
 )
 
 RESCUE_BN254_T3 = RescueParams(
@@ -36,11 +36,11 @@ RESCUE_BN254_T3 = RescueParams(
     t=3,
     alpha=BN254_SCALAR.alpha,
     alpha_inv=BN254_SCALAR.alpha_inv,
-    kappa=128,
+    g=BN254_SCALAR.generator,
     r=2,
     c=1,
-    g=BN254_SCALAR.generator,
-    d=2,
+    d=1,
+    kappa=128,
 )
 
 RESCUE_ST_T3 = RescueParams(
@@ -48,69 +48,73 @@ RESCUE_ST_T3 = RescueParams(
     t=3,
     alpha=ST.alpha,
     alpha_inv=ST.alpha_inv,
-    kappa=128,
+    g=ST.generator,
     r=2,
     c=1,
-    g=ST.generator,
-    d=2,
+    d=1,
+    kappa=128,
 )
 
-# Goldilocks t=12 instance (kappa=128, c=1)
+# Goldilocks t=12 instance (kappa=128, c=d=4)
 
 RESCUE_GOLDILOCKS_T12 = RescueParams(
     p=GOLDILOCKS.p,
     t=12,
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
-    kappa=128,
-    r=11,
-    c=1,
     g=GOLDILOCKS.generator,
-    d=11,
+    r=8,
+    c=4,
+    d=4,
+    kappa=128, 
 )
 
-# StarkWare t=12 instance (kappa=122, c=4, R=10, as defined in the Rescue paper)
+# StarkWare t=12 instance (kappa=122, c=4, R=10)
+# Rescue Mark I (https://eprint.iacr.org/2019/426.pdf, Appendix E.1) 
 
 RESCUE_STARKWARE_T12 = RescueParams(
     p=STARKWARE.p,
     t=12,
     alpha=STARKWARE.alpha,
     alpha_inv=STARKWARE.alpha_inv,
-    kappa=122,
+    g=STARKWARE.generator,
+    R=10,
     r=8,
     c=4,
-    R=10,
-    g=STARKWARE.generator,
-    d=8,
+    d=4,
+    kappa=122,
 )
 
 # Ed25519 t=6 instance (kappa=128, c=1)
+# Rescue Mark II (https://eprint.iacr.org/2019/426.pdf, Appendix E.2) 
 
 RESCUE_ED25519_T6 = RescueParams(
     p=ED25519_SCALAR.p,
     t=6,
     alpha=ED25519_SCALAR.alpha,
     alpha_inv=ED25519_SCALAR.alpha_inv,
-    kappa=128,
-    r=5,
-    c=1,
     g=ED25519_SCALAR.generator,
-    d=5,
+    R=10,
+    r=4,
+    c=2,
+    d=2,
+    kappa=128,
 )
 
 # Ed448 t=10 instance (kappa=224, c=2, R=10)
+# Rescue Mark III (https://eprint.iacr.org/2019/426.pdf, Appendix E.3)
 
 RESCUE_ED448_T10 = RescueParams(
     p=ED448_SCALAR.p,
     t=10,
     alpha=ED448_SCALAR.alpha,
     alpha_inv=ED448_SCALAR.alpha_inv,
-    kappa=224,
+    g=ED448_SCALAR.generator,
+    R=10,
     r=8,
     c=2,
-    R=10,
-    g=ED448_SCALAR.generator,
-    d=8,
+    d=2,
+    kappa=224,
 )
 
 # ---------------------------------------------------------------------------
@@ -124,11 +128,11 @@ RESCUE_PRIME_BLS12_T3 = RescuePrimeParams(
     t=3,
     alpha=BLS12_381_SCALAR.alpha,
     alpha_inv=BLS12_381_SCALAR.alpha_inv,
-    kappa=128,
+    g=BLS12_381_SCALAR.generator,
     r=2,
     c=1,
-    g=BLS12_381_SCALAR.generator,
     d=2,
+    kappa=128,
 )
 
 RESCUE_PRIME_BN254_T3 = RescuePrimeParams(
@@ -136,11 +140,11 @@ RESCUE_PRIME_BN254_T3 = RescuePrimeParams(
     t=3,
     alpha=BN254_SCALAR.alpha,
     alpha_inv=BN254_SCALAR.alpha_inv,
-    kappa=128,
+    g=BN254_SCALAR.generator,
     r=2,
     c=1,
-    g=BN254_SCALAR.generator,
     d=2,
+    kappa=128,
 )
 
 RESCUE_PRIME_ST_T3 = RescuePrimeParams(
@@ -148,11 +152,11 @@ RESCUE_PRIME_ST_T3 = RescuePrimeParams(
     t=3,
     alpha=ST.alpha,
     alpha_inv=ST.alpha_inv,
-    kappa=128,
+    g=ST.generator,
     r=2,
     c=1,
-    g=ST.generator,
     d=2,
+    kappa=128,
 )
 
 # Goldilocks instances (kappa=128, c=4)
@@ -162,11 +166,11 @@ RESCUE_PRIME_GOLDILOCKS_T8 = RescuePrimeParams(
     t=8,
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
-    kappa=128,
+    g=GOLDILOCKS.generator,
     r=4,
     c=4,
-    g=GOLDILOCKS.generator,
     d=4,
+    kappa=128,
 )
 
 RESCUE_PRIME_GOLDILOCKS_T12 = RescuePrimeParams(
@@ -174,39 +178,42 @@ RESCUE_PRIME_GOLDILOCKS_T12 = RescuePrimeParams(
     t=12,
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
-    kappa=128,
+    g=GOLDILOCKS.generator,
     r=8,
     c=4,
-    g=GOLDILOCKS.generator,
-    d=8,
+    d=4,
+    kappa=128,
 )
 
 # ---------------------------------------------------------------------------
 # Rescue Prime Optimized (RPO)
+# digest size is rate/2 in RPO, see https://eprint.iacr.org/2022/1577.pdf, Section 2.7
 # ---------------------------------------------------------------------------
 
+# https://eprint.iacr.org/2022/1577.pdf, Table 1
 RPO_GOLDILOCKS_T12 = RescuePrimeOptimizedParams(
     p=GOLDILOCKS.p,
     t=12,
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
-    kappa=128,
+    R=7,
     r=8,
     c=4,
-    R=7,
-    d=4,
+    d=4, # digest size is rate/2 in RPO
+    kappa=128,
 )
 
+# https://eprint.iacr.org/2022/1577.pdf, Table 1
 RPO_GOLDILOCKS_T16 = RescuePrimeOptimizedParams(
     p=GOLDILOCKS.p,
     t=16,
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
-    kappa=160,
+    R=7,
     r=10,
     c=6,
-    R=7,
-    d=5,
+    d=5, # digest size is rate/2 in RPO
+    kappa=160,
 )
 
 # ---------------------------------------------------------------------------

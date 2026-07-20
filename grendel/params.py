@@ -19,14 +19,13 @@
 # expands them into a fully-specified instance that the permutation, hash
 # modes, instances and tests consume. Any value the user omits is filled in by
 # the matching _init_* helper (or, for r/c/d, by the shared
-# derive_rate_capacity_digest). Settings that depart from the recommended ones
+# resolve_sponge_params). Settings that depart from the recommended ones
 # raise a ParamRecommendationWarning rather than an error.
 # ---------------------------------------------------------------------------
 
 
 # Structural imports
-import warnings
-from recommendations import ParamRecommendationWarning
+from recommendations import recommend
 from types import SimpleNamespace
 
 # Math specific imports
@@ -35,7 +34,7 @@ from sage.all import GF, Integer
 
 # Custom imports
 from utils.matrix import map_nested, invert_matrix, vandermonde_mds_matrix
-from utils.mode import derive_rate_capacity_digest
+from utils.mode import resolve_sponge_params
 from utils.sampler import XOFFieldElementSampler
 from utils.complexities import gb_comp2
 
@@ -55,15 +54,18 @@ class GrendelParams:
         self,
         p:     int,
         t:     int,
-        r:     int = None,
-        c:     int = None,
-        d:     int = None,
         alpha: int = None,
         R:     int = None,
         g:     int = None,
         M:     list[list[int]] = None,
         rcons: list[list[int]] = None,
+        # Sponge parameters (derived if not provided)
+        r:     int = None,
+        c:     int = None,
+        d:     int = None,
+        # Target security level (default 128 bits)
         kappa: int = 128,
+        toy: bool = False,
     ):
         """
         Parameters
@@ -79,8 +81,11 @@ class GrendelParams:
         g     : primitive element of F_p^* seeding the MDS matrix; smallest one if not provided
         M     : t x t MDS matrix; derived from the systematic Reed-Solomon generator matrix (Sec. 4.5, Algorithm 4) if not provided
         rcons : R x t round constants c^(0), ..., c^(R-1); generated via _init_cons (SHAKE256, Sec. 4.6, Algorithm 5) if not provided
+        r     : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
+        c     : capacity (number of inner state elements for sponge); derived if not provided
+        d     : digest size for generic fixed-output sponge (number of output elements); derived if not provided
         kappa : target security level in bits (default 128)
-                Note that kappa seeds the round-constant derivation, so it is part of the instance description even when R is given.
+        toy   : if True, recommendation-level checks warn instead of raising (default False)
         """
 
         # Input sanitization
@@ -91,30 +96,29 @@ class GrendelParams:
         self.F = GF(p)
         self.t = t
         self.kappa = kappa
+        self.toy = toy
 
-        # Non-linear layer: the S-box S(x) = x^alpha * legendre(x) equals the single
-        # power map x^e with e = alpha + (p-1)/2, since legendre(x) = x^((p-1)/2 by Euler's
-        # criterion. Its inverse is the power map x^e_inv. f is a permutation iff gcd(e, p-1) = 1.
+        # Sponge parameters
+        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
+
+        # Non-linear layer
+        # The S-box S(x) = x^alpha * legendre(x) equals the single power map x^e with e = alpha + (p-1)/2.
         self.alpha = alpha if alpha is not None else self._init_alpha()
         self.e = self.alpha + (p - 1) // 2
         self.e_inv = pow(self.e, -1, p - 1)
 
-        # Hash modes: sponge parameters (rate r, capacity c, digest size d)
-        self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
-
-        # Round number: given or derived from the attack complexities (needs alpha and c)
+        # Round number
         self.R = R if R is not None else self._init_rounds()
 
-        # Linear layer: MDS matrix from the systematic Reed-Solomon generator matrix
-        # seeded by the smallest primitive element g (needs nothing derived above)
+        # Linear layer
         self.g = self.to_field(g) if g is not None else self.F.multiplicative_generator()
         self.M = map_nested(M if M is not None else self._init_mat(), self.to_field)
         self.M_inv = invert_matrix(self.M)
 
-        # Round constants: R x t grid expanded from SHAKE256 (needs R, t, kappa)
+        # Round constants
         self.rcons = map_nested(rcons if rcons is not None else self._init_cons(), self.to_field)
 
-        # Parameter sanitization: validate the fully-constructed (stored/derived) values
+        # Parameter sanitization
         self._parameter_sanitization()
 
     # ---------------------------------------------------------------------------
@@ -149,7 +153,7 @@ class GrendelParams:
         field_bits = int(p).bit_length()
         if field_bits < 31:
             msg = f"TOY VERSION: field is only {field_bits} bits"
-            warnings.warn(msg, ParamRecommendationWarning, stacklevel=2)
+            recommend(msg, params.toy)
 
     def _parameter_sanitization(self):
         """Validate the fully-constructed parameter object (stored/derived values):
@@ -164,10 +168,10 @@ class GrendelParams:
         # --- Warnings (recommended, not required) ---
         if self._integral_comp() < self.kappa:
             msg = f"TOY VERSION: integral attacks cost only 2^{self._integral_comp():.1f} < 2^{self.kappa}"
-            warnings.warn(msg, ParamRecommendationWarning, stacklevel=2)
+            recommend(msg, self.toy)
         if self.d == 1 and self._rootfinding_comp() < self.kappa:
             msg = f"TOY VERSION: root-finding attacks cost only 2^{self._rootfinding_comp():.1f} < 2^{self.kappa}"
-            warnings.warn(msg, ParamRecommendationWarning, stacklevel=2)
+            recommend(msg, self.toy)
 
     # ---------------------------------------------------------------------------
     # Derivation helpers (defaults for the optional parameters)

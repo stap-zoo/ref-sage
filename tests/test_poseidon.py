@@ -426,7 +426,7 @@ def test_alpha_must_be_permutation():
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        PoseidonParams(p=101, t=3, alpha=3, R_ext=2, R_int=2, r=2, c=1, d=1)  # tiny field
+        PoseidonParams(p=101, t=3, alpha=3, R_ext=2, R_int=2, r=2, c=1, d=1, toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)

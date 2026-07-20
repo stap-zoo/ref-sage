@@ -221,7 +221,7 @@ def test_alpha_must_be_permutation():
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        GMiMCParams(p=101, t=3, R=5, r=2, c=1, d=1)  # tiny field
+        GMiMCParams(p=101, t=3, R=5, r=2, c=1, d=1, toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)

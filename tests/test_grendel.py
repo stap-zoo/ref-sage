@@ -278,7 +278,7 @@ def test_too_small_state_raises():
 
 def test_toy_instance_warns():
     with pytest.warns(ParamRecommendationWarning):
-        GrendelParams(p=65519, t=2, r=1, c=1, d=1, kappa=16)
+        GrendelParams(p=65519, t=2, r=1, c=1, d=1, kappa=16, toy=True)
 
 
 def test_recommended_instance_no_warning():
@@ -294,7 +294,7 @@ def test_params_reproducible(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ParamRecommendationWarning)
         again = GrendelParams(p=params.p, t=params.t, r=params.r, c=params.c,
-                              d=params.d, kappa=params.kappa)
+                              d=params.d, kappa=params.kappa, toy=params.toy)
     assert again.alpha == params.alpha and again.R == params.R and again.g == params.g
     assert again.M == params.M
     assert again.rcons == params.rcons

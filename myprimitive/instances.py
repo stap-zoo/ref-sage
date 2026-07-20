@@ -30,4 +30,6 @@ MYPRIMITIVE_GOLDILOCKS_T3 = MyPrimitiveParams(
     r=2,                              # sponge rate (set to None if you do not specify Sponge mode)
     c=1,                              # sponge capacity (note r + c == t)
     d=1,                              # digest size
+    kappa=32,                         # security parameter (bits)
+    toy=True                          # toy mode (if true, security constraints only warn but do not raise an exception)
 )

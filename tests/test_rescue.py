@@ -37,7 +37,7 @@ INSTANCES = [
 
 # ---------------------------------------------------------------------------
 # 4.1 Known-answer test vectors (from the Sage reference implementation)
-# https://github.com/KULeuven-COSIC/Marvellous/blob/master/instance_generatoprim.sage
+# https://github.com/KULeuven-COSIC/Marvellous/blob/master/instance_generator.sage
 # ---------------------------------------------------------------------------
 
 PERMUTATION_KATS = {
@@ -83,14 +83,16 @@ PERMUTATION_KATS = {
     ],
 }
 
+# The reference Sponge() has no separate digest parameter -- it always squeezes exactly
+# `rate` elements for a single-block input. "output" below is that full rate-length
+# vector; test_sponge_kat compares our (rate=8, digest=4) output against its prefix.
 SPONGE_KATS = {
     "GOLDILOCKS_T12": [
         {
-            "input": list(range(11)),
+            "input": list(range(8)),
             "output": [
-                0x3232bbf92f36b4ca, 0x4dc27ad23dfee93b, 0xd7f07aeea8a9c222, 0xf8654c877d2cf694,
-                0x424fba831e07ca3a, 0xd8d8e2e0687dd981, 0x3b6d6919cd9a7e8a, 0xac1a59ad3b320ba7,
-                0xa10e69ab735edbd3, 0x4e9d93a7ba766427, 0xbde43d3fbc71eba4,
+                0x365cd577d59c9f78, 0x1a9c38538cbeb745, 0x0970b97e8d28d250, 0x9c134e2e8cad103a,
+                0x21f4a39f1e0a0d97, 0xfe31490e0c8b2f6f, 0xf54640cc7d7b0c08, 0x1f45507a2210755b,
             ],
         },
     ],
@@ -147,7 +149,9 @@ def test_sponge_kat(name, params, kat):
     prim = Rescue(params)
     inp = [prim.to_field(x) for x in kat["input"]]
     out = prim.hash_sponge(inp, variable_length=False)
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    # kat["output"] is the reference Sponge's full rate-length squeeze; our digest
+    # (self.d <= rate) is always its prefix -- compare only the first len(out) elements.
+    assert [prim.from_field(x) for x in out] == kat["output"][:len(out)]
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +229,7 @@ def test_invalid_state_size():
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        RescueParams(p=101, t=3, r=2, c=1, d=1)  # tiny field
+        RescueParams(p=101, t=3, r=2, c=1, d=1, toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])

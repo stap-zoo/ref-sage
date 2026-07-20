@@ -189,7 +189,7 @@ def test_odd_state_size_rejected():
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        NeptuneParams(p=101, t=4, alpha=3, R_ext=2, R_int=2, r=2, c=2, d=2)  # tiny field
+        NeptuneParams(p=101, t=4, alpha=3, R_ext=2, R_int=2, r=2, c=2, d=2, toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)

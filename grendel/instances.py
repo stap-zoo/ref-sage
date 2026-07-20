@@ -22,7 +22,11 @@ from grendel.params import GrendelParams
 # Toy instances of the paper's Groebner-basis experiments
 # ---------------------------------------------------------------------------
 
-# p = 3 mod 4, so alpha derives to 2; R derives to 7 at kappa = 16.
+# p = 3 mod 4, so alpha derives to 2; R derives to 7 at kappa = 16. kappa also seeds
+# _init_cons's SHAKE256 stream (f"grendel-{p}-{t}-{kappa}"), so it can't be tuned to
+# match the sponge floor exactly without changing the round constants and breaking the
+# KATs below -- toy=True is what silences the (accurate) capacity/digest/root-finding
+# shortfall warnings for c=d=1 over this 16-bit field, kappa stays at its original value.
 TOY_GRENDEL_65519_T2 = GrendelParams(
     p=65519,
     t=2,
@@ -30,10 +34,11 @@ TOY_GRENDEL_65519_T2 = GrendelParams(
     r=1,
     c=1,
     d=1,
-    kappa=16, # sponge constraint min(r,c)*log2(p) >= kappa, for r=c=1 and log2(p)=16
+    kappa=16,
+    toy=True,
 )
 
-# p = 1 mod 4, so alpha derives to 3; R derives to 5 at kappa = 16.
+# p = 1 mod 4, so alpha derives to 3; R derives to 5 at kappa = 16. Same reasoning as above.
 TOY_GRENDEL_65393_T2 = GrendelParams(
     p=65393,
     t=2,
@@ -41,5 +46,6 @@ TOY_GRENDEL_65393_T2 = GrendelParams(
     r=1,
     c=1,
     d=1,
-    kappa=16, # sponge constraint min(r,c)*log2(p) >= kappa, for r=c=1 and log2(p)=16
+    kappa=16,
+    toy=True,
 )

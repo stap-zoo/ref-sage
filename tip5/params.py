@@ -6,15 +6,14 @@
 # user-facing parameters and expands them into a fully-specified instance that
 # the permutation, hash modes, instances and tests consume. Any value the user
 # omits is filled in by the matching _init_* helper (or, for r/c/d, by the shared
-# derive_rate_capacity_digest). Settings that depart from the recommended ones
+# resolve_sponge_params). Settings that depart from the recommended ones
 # raise a ParamRecommendationWarning rather than an error.
 #
 # Tip4Params and Tip4Prime params implement variants detailed here: # https://toposware.com/paper_tip5.pdf
 # ---------------------------------------------------------------------------
 
 # Structural imports
-import warnings
-from recommendations import ParamRecommendationWarning
+from recommendations import recommend
 from types import SimpleNamespace
 
 # Math specific imports
@@ -25,7 +24,7 @@ from sage.all import GF, Integer
 from utils.lut import invert_LUT
 from utils.sampler import XOFFieldElementSampler
 from utils.matrix import map_nested, invert_matrix, circulant
-from utils.mode import derive_rate_capacity_digest
+from utils.mode import resolve_sponge_params
 from utils.field import GOLDILOCKS
 from marvellous.params import RPO_MDS_ROWS   # Tip4' reuses RPO's circulant MDS
 
@@ -61,10 +60,13 @@ class Tip5Params:
         alpha_inv: int = GOLDILOCKS.alpha_inv,
         LUT:       list[int] = None,
         rcons:     list[list[int]] = None,
-        r:         int = 10,
-        c:         int = 6,
-        d:         int = 5,
-        kappa:     int = 160,
+        # Sponge parameters (derived if not provided)
+        r:          int = 10,
+        c:          int = 6,
+        d:          int = 5,
+        # Target security level (default 128 bits)
+        kappa:      int = 160,
+        toy:        bool = False,
     ):
         """
         Parameters
@@ -79,10 +81,11 @@ class Tip5Params:
         alpha_inv : alpha^{-1} mod (p-1); computed via _init_alpha_inv if not provided
         LUT       : 256-entry lookup table for the split-and-lookup S-box; generated via _init_LUT if not provided
         rcons     : Rxt round constants; generated via Blake3 (_init_cons) if not provided
-        r         : rate (number of outer state elements; the hash is fixed-length, one block); derived if not provided
-        c         : capacity (number of inner state elements); derived if not provided
-        d         : digest size (number of output elements); derived if not provided
+        r         : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
+        c         : capacity (number of inner state elements for sponge); derived if not provided
+        d         : digest size for generic fixed-output sponge (number of output elements); derived if not provided
         kappa     : target security level in bits (default 128)
+        toy       : if True, recommendation-level checks warn instead of raising (default False)
         """
 
         # Input sanitization
@@ -93,6 +96,10 @@ class Tip5Params:
         self.F = GF(p)
         self.t = t
         self.kappa = kappa
+        self.toy = toy
+
+        # Sponge parameters
+        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
 
         # Montgomery constant
         self.mont_R = self.to_field(2**64) # Montgomery constant
@@ -105,9 +112,6 @@ class Tip5Params:
         self.LUT_inv = invert_LUT(self.LUT)
         self.alpha = alpha if alpha is not None else self._init_alpha()
         self.alpha_inv = alpha_inv if alpha_inv is not None else self._init_alpha_inv()
-
-        # Hash modes
-        self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Rounds (set before _init_cons, whose derivation depends on R)
         self.R = R if R is not None else self._init_rounds()
@@ -152,7 +156,7 @@ class Tip5Params:
         # --- Warnings (recommended, not required) ---
         field_bits = int(params.p).bit_length()
         if field_bits < 31:
-            warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
+            recommend(f"TOY VERSION: field is only {field_bits} bits", params.toy)
 
     def _parameter_sanitization(self):
         """Validate the fully-constructed parameter object (stored/derived values):

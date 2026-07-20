@@ -291,7 +291,7 @@ def test_official_instances_do_not_warn():
 
 def test_non_official_warns():
     with pytest.warns(ParamRecommendationWarning):
-        SkyscraperParams(p=GOLDILOCKS.p, si=[256] * 8, r=1, c=1, d=1)
+        SkyscraperParams(p=GOLDILOCKS.p, si=[256] * 8, r=1, c=1, d=1, toy=True)
 
 
 def test_odd_si_length_raises():
@@ -301,4 +301,4 @@ def test_odd_si_length_raises():
 
 def test_chi_non_permutation_radix_raises():
     with pytest.raises(NotImplementedError):
-        SkyscraperParams(p=GF(61).order(), si=[8, 8], r=1, c=1, d=1)
+        SkyscraperParams(p=GF(61).order(), si=[8, 8], r=1, c=1, d=1, toy=True)
