@@ -489,11 +489,11 @@ def test_closed_flystel_matches_open(name, params):
 
 
 def test_params_accept_l_or_t():
-    field_args = dict(p=GOLDILOCKS.p, alpha=GOLDILOCKS.alpha, g=GOLDILOCKS.generator, R=1, r=3, c=1, d=1)
-    from_l = AnemoiParams(l=2, **field_args)
-    from_t = AnemoiParams(t=4, **field_args)
-    from_both = AnemoiParams(l=2, t=4, **field_args)
-    assert (from_l.l, from_l.t) == (from_t.l, from_t.t) == (from_both.l, from_both.t) == (2, 4)
+    field_args = dict(p=GOLDILOCKS.p, alpha=GOLDILOCKS.alpha, g=GOLDILOCKS.generator, R=1, r=4, c=4, d=4)
+    from_l = AnemoiParams(l=4, **field_args)
+    from_t = AnemoiParams(t=8, **field_args)
+    from_both = AnemoiParams(l=4, t=8, **field_args)
+    assert (from_l.l, from_l.t) == (from_t.l, from_t.t) == (from_both.l, from_both.t) == (4, 8)
     assert from_l.C == from_t.C and from_l.D == from_t.D and from_l.Mx == from_t.Mx
 
     with pytest.raises(ValueError):
@@ -505,14 +505,14 @@ def test_params_accept_l_or_t():
 
 
 def test_params_derive_alpha():
-    derived = AnemoiParams(p=GOLDILOCKS.p, g=GOLDILOCKS.generator, l=1, R=1, r=1, c=1, d=1)
+    derived = AnemoiParams(p=GOLDILOCKS.p, g=GOLDILOCKS.generator, l=4, R=1, r=4, c=4, d=4)
     assert derived.alpha == GOLDILOCKS.alpha
     assert derived.alpha_inv == GOLDILOCKS.alpha_inv
 
     explicit = AnemoiParams(
         p=GOLDILOCKS.p, g=GOLDILOCKS.generator,
         alpha=GOLDILOCKS.alpha, alpha_inv=GOLDILOCKS.alpha_inv,
-        l=1, R=1, r=1, c=1, d=1,
+        l=4, R=1, r=4, c=4, d=4,
     )
     assert (explicit.alpha, explicit.alpha_inv) == (derived.alpha, derived.alpha_inv)
 
@@ -541,7 +541,7 @@ def test_jive_output_size(name, params):
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        AnemoiParams(p=101, g=2, l=1, r=1, c=1, d=1)  # tiny field
+        AnemoiParams(p=101, g=2, l=1, r=1, c=1, d=1, toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])

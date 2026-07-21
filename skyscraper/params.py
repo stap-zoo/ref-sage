@@ -6,7 +6,7 @@
 # the user-facing parameters and expands them into a fully-specified instance
 # that the permutation, hash modes, instances and tests consume. Any value the
 # user omits is filled in by the matching _init_* helper (or, for r/c/d, by the
-# shared derive_rate_capacity_digest). Settings that depart from the recommended
+# shared resolve_sponge_params). Settings that depart from the recommended
 # ones raise a ParamRecommendationWarning rather than an error.
 #
 # Skyscraper is a 2-branch Feistel over an (extension) field GF(p^n). It has no
@@ -25,7 +25,7 @@
 
 # Structural imports
 import warnings
-from recommendations import ParamRecommendationWarning
+from recommendations import ParamRecommendationWarning, recommend
 from types import SimpleNamespace
 
 # Math specific imports
@@ -37,7 +37,7 @@ from sage.all import GF, Integer, PolynomialRing
 from monolith.params import MONOLITH_LUT8   # Skyscraper's Bar reuses Monolith's 8-bit chi table
 from utils.sampler import XOFFieldElementSampler
 from utils.matrix import map_nested
-from utils.mode import derive_rate_capacity_digest
+from utils.mode import resolve_sponge_params
 from utils.poly import univ_from_list, power_map_coordinate_polys, poly_to_aos, map_coeffs
 
 class SkyscraperParams:
@@ -54,10 +54,13 @@ class SkyscraperParams:
         bar_rounds: set = None, # TODO pass like this or maybe other method?
         LUTs:       dict[int, list[int]] = None,
         rcons:      list[list[int]] = None,
+        # Sponge parameters (derived if not provided)
         r:          int = None,
         c:          int = None,
         d:          int = None,
+        # Target security level (default 128 bits)
         kappa:      int = 128,
+        toy:        bool = False,
     ):
         """
         Parameters
@@ -76,10 +79,11 @@ class SkyscraperParams:
         montgomery : multiply the squaring by sigma_inv (Montgomery constant) if True
         LUTs       : per-radix lookup tables for Bar; generated via _init_LUTs if not provided
         rcons      : R x n round constants; generated via _init_cons (SHA256) if not provided
-        r          : sponge rate (over base-field elements); r + c == 2*n
-        c          : sponge capacity (over base-field elements)
-        d          : sponge digest size (over base-field elements)
+        r          : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
+        c          : capacity (number of inner state elements for sponge); derived if not provided
+        d          : digest size for generic fixed-output sponge (number of output elements); derived if not provided
         kappa      : target security level in bits (default 128)
+        toy        : if True, recommendation-level checks warn instead of raising (default False)
         """
 
         # Input sanitization
@@ -88,9 +92,14 @@ class SkyscraperParams:
         # General settings
         self.p = p
         self.n = n
+        self.t = 2*self.n  # Feistel state of 2 branches => t = 2*n base-field elements
         self.F = GF(p) # base field, not extension field
         self.bits = int(p).bit_length()
         self.kappa = kappa
+        self.toy = toy
+
+        # Sponge parameters
+        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
 
         # Extension degree n and Feistel state of 2 branches => t = 2*n base-field elements.
         if cpolys is not None:
@@ -123,10 +132,7 @@ class SkyscraperParams:
         # Round constants (R rows of n coordinates; first and last rows are zero)
         self.rcons = map_nested(rcons if rcons is not None else self._init_cons(), self.to_field)
 
-        # Hash modes (state size for the modes is the flat 2*n base-field state)
-        self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
-
-        # Final consistency checks
+        # Parameter sanitization
         self._parameter_sanitization()
 
     # ---------------------------------------------------------------------------
@@ -178,7 +184,7 @@ class SkyscraperParams:
 
         # --- Warnings (recommended, not required) ---
         if self.bits < 31:
-            warnings.warn(f"TOY VERSION: field is only {self.bits} bits, recommended at least 31", ParamRecommendationWarning, stacklevel=2)
+            recommend(f"TOY VERSION: field is only {self.bits} bits, recommended at least 31", self.toy)
         if not (self.n in (1, 2, 3) and self.si == [256] * 32 and self.R == 18):
             warnings.warn(
                 "Non-official Skyscraper parameters (recommended: n in {1,2,3}, si=[256]*32, R=18)",

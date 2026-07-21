@@ -14,13 +14,13 @@
 # the user-facing parameters and expands them into a fully-specified instance
 # that the permutation, hash modes, instances and tests consume. Any value the
 # user omits is filled in by the matching _init_* helper (or, for r/c/d, by the
-# shared derive_rate_capacity_digest). Settings that depart from the
+# shared resolve_sponge_params). Settings that depart from the
 # recommended ones raise a ParamRecommendationWarning rather than an error.
 # ---------------------------------------------------------------------------
 
 # Structural imports
 import warnings
-from recommendations import ParamRecommendationWarning
+from recommendations import ParamRecommendationWarning, recommend
 from types import SimpleNamespace
 
 # Math specific imports
@@ -30,7 +30,7 @@ from math import log2
 # Custom imports
 from utils.lut import power_residue_sigma, power_residue_lut, power_residue_lut_inv
 from utils.matrix import map_nested, invert_matrix, circulant, dl_m44_84_matrix, low_addition_mds_matrix
-from utils.mode import derive_rate_capacity_digest
+from utils.mode import resolve_sponge_params
 from utils.sampler import XOFFieldElementSampler
 from utils.complexities import uni_solve_comp
 from utils.field import BLS12_381_SCALAR, BN254_SCALAR, find_smallest_generator
@@ -109,11 +109,14 @@ class PolocoloParams:
         rcons:       list[list[int]] = None,
         g:           int = None,
         field_label: str = None,
+        # Sponge parameters (derived if not provided)
         r:           int = None,
         c:           int = None,
         d:           int = None,
+        # Target security level (default 128 bits)
         kappa:       int = 128,
         tight:       bool = False,
+        toy:         bool = False,
     ):
         """
         Parameters
@@ -128,16 +131,16 @@ class PolocoloParams:
         M           : t x t MDS matrix of the linear layer; the published matrix for t if not provided
         rcons       : R x t round constants c^(0), ..., c^(R-1) (c^(R) = 0 is fixed by the design
                       and not stored); generated via _init_cons (SHAKE128) if not provided
-        g           : generator of F_p^*; taken from utils/field.py (or computed) if not provided
+        g           : generator of F_p^*; smallest one if not provided
         field_label : field name in the round-constant seed ("BLS12" / "BN254" for the official
                       fields); derived from p if not provided
-        r           : rate (number of outer state elements absorbed/squeezed per sponge step);
-                      derived if not provided
-        c           : capacity (number of inner state elements); derived if not provided
-        d           : digest size (number of output elements); derived if not provided
+        r           : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
+        c           : capacity (number of inner state elements for sponge); derived if not provided
+        d           : digest size for generic fixed-output sponge (number of output elements); derived if not provided
         kappa       : target security level in bits (default 128)
         tight       : use the tight parameters of Section 6.1 / Table 7 (no security margin,
                       attack bound kappa instead of 1.25*kappa) for the derived m and R
+        toy         : if True, recommendation-level checks warn instead of raising (default False)
         """
 
         # Input sanitization
@@ -149,21 +152,22 @@ class PolocoloParams:
         self.t = t
         self.kappa = kappa
         self.tight = tight
+        self.toy = toy
+
+        # Sponge parameters
+        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
 
         # Non-linear layer: the power-residue S-box S(x) = x^{-1} * T[x^ann] with
         # ann = (p-1)/m, realised as the lookup tables LUT / LUT_inv over sigma.
         # "annihilator" exponent (p-1)/m: raising to it annihilates the subgroup of m-th
         # powers {g^(qm)} -> 1, leaving only the residue-class part g^(r(p-1)/m); i.e.
         # x^ann is the m-th power residue (x/p)_m of Eq. (1).
-        self.g = g if g is not None else self._init_g()
+        self.g = self.to_field(g) if g is not None else self.F.multiplicative_generator()
         self.m = m if m is not None else self._init_m()
         self.ann = (p - 1) // self.m
         self.sigma = list(sigma) if sigma is not None else self._init_sigma()
         self.LUT = {k: self.to_field(v) for k, v in power_residue_lut(p, self.g, self.m, self.sigma).items()}
         self.LUT_inv = {k: self.to_field(v) for k, v in power_residue_lut_inv(p, self.g, self.m, self.sigma).items()}
-
-        # Hash modes
-        self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Round number (needs m; set before _init_cons, whose seed contains R)
         self.R = R if R is not None else self._init_rounds()
@@ -176,7 +180,7 @@ class PolocoloParams:
         self.field_label = field_label if field_label is not None else self._init_field_label()
         self.rcons = map_nested(rcons if rcons is not None else self._init_cons(), self.to_field)
 
-        # Parameter sanitization: validate the fully-constructed (stored/derived) values
+        # Parameter sanitization
         self._parameter_sanitization()
 
     # ---------------------------------------------------------------------------
@@ -218,7 +222,7 @@ class PolocoloParams:
         # --- Warnings (recommended, not required) ---
         field_bits = int(params.p).bit_length()
         if field_bits < 31:
-            warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
+            recommend(f"TOY VERSION: field is only {field_bits} bits", params.toy)
         if params.p not in (BLS12_381_SCALAR.p, BN254_SCALAR.p):
             warnings.warn("Polocolo is specified and analyzed for the BLS12-381 and BN254 scalar fields only", ParamRecommendationWarning, stacklevel=2)
         if not 3 <= params.t <= 8:
@@ -250,10 +254,6 @@ class PolocoloParams:
     def _init_field_label(self) -> str:
         """Field label for official instances. Fallback to the decimal characteristic."""
         return FIELD_LABELS.get(self.p, str(self.p))
-
-    def _init_g(self) -> int:
-        """The (smallest) generator of F_p^*."""
-        return find_smallest_generator(self.p)
 
     def _init_m(self) -> int:
         """The recommended power-residue order for (t, tight) from Table 1 / Table 7;

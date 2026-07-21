@@ -188,7 +188,7 @@ AFFINE_CASES = [
     ids=[f"{field_name} with t={t}, alpha={a}" for field_name, _, a, t in AFFINE_CASES],
 )
 def test_affine(field_name, field, alpha, t):
-    params = GriffinParams(p=field.p, t=t, alpha=alpha, R=1, r=t - 1, c=1, d=1)
+    params = GriffinParams(p=field.p, t=t, alpha=alpha, R=1, c=1, d=1, kappa=field.bits // 2) # capacity/digest holds 2*kappa bits
     prim = Griffin(params)
 
     inp = [prim.F.random_element() for _ in range(t)]
@@ -233,7 +233,7 @@ def test_invalid_state_size():
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        GriffinParams(p=101, t=3, alpha=3, R=4, r=2, c=1, d=1)  # tiny field
+        GriffinParams(p=101, t=3, alpha=3, R=4, r=2, c=1, d=1, toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])

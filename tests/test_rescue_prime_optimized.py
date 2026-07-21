@@ -142,7 +142,7 @@ def test_invalid_state_size():
 def test_toy_field_warns():
     # t=12 because the RPO circulant matrix is only defined for t in {12, 16}.
     with pytest.warns(ParamRecommendationWarning):
-        RescuePrimeOptimizedParams(p=101, t=12, r=8, c=4, d=4)  # tiny field
+        RescuePrimeOptimizedParams(p=101, t=12, r=8, c=4, d=4, toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])

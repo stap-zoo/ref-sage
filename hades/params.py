@@ -7,25 +7,24 @@
 # the user-facing parameters and expands them into a fully-specified instance
 # that the permutation, hash modes, instances and tests consume. Any value the
 # user omits is filled in by the matching _init_* helper (or, for r/c/d, by the
-# shared derive_rate_capacity_digest). The subclasses differ only in their
+# shared resolve_sponge_params). The subclasses differ only in their
 # _init_* derivations (round constants, external/internal matrices); the base
 # constructor and validation are shared. Settings that depart from the
 # recommended ones raise a ParamRecommendationWarning rather than an error.
 # ---------------------------------------------------------------------------
 
 # Structural imports
-from recommendations import ParamRecommendationWarning
+from recommendations import recommend
 from types import SimpleNamespace
 
 # Math specific imports
-import warnings
 from math import gcd
 from sage.all import GF, Integer
 
 # Custom imports
 from utils.sampler import LFSRFieldElementSampler, XOFFieldElementSampler
 from utils.matrix import cauchy_mds_matrix, circulant, m4_to_block_circulant_matrix, dl_m44_84_matrix, ones_plus_diag_matrix, map_nested, invert_matrix
-from utils.mode import derive_rate_capacity_digest
+from utils.mode import resolve_sponge_params
 
 # ---------------------------------------------------------------------------
 # Grain LFSR settings (used by Poseidon/Poseidon2)
@@ -118,9 +117,6 @@ class HadesParams:
         alpha: int,
         R_ext: int = None,
         R_int: int = None,
-        r: int = None,
-        c: int = None,
-        d: int = None,
         version: str = "isec",
         M_ext: list[list] = None,
         M_int: list[list] = None,
@@ -128,7 +124,13 @@ class HadesParams:
         R_ext_beg: int = None,
         R_ext_end: int = None,
         u: int = 1,
+        # Sponge parameters (derived if not provided)
+        r: int = None,
+        c: int = None,
+        d: int = None,
+        # Target security level (default 128 bits)
         kappa: int = 128,
+        toy: bool = False,
     ):
         """
         Parameters
@@ -138,9 +140,6 @@ class HadesParams:
         alpha           : exponent of the power-map S-box (its degree)
         R_ext           : number of external (full) rounds; derived via _init_rounds if not provided (not yet implemented)
         R_int           : number of internal (partial) rounds; derived via _init_rounds if not provided (not yet implemented)
-        r               : rate (number of outer state elements absorbed/squeezed per sponge step)
-        c               : capacity (number of inner state elements)
-        d               : digest size (number of output elements)
         version         : round-constant / MDS construction strategy (see POSEIDON_VERSIONS)
         M_ext           : external-round matrix (txt); derived via _init_mat_ext if not given
         M_int           : internal-round matrix (txt); derived via _init_mat_int if not given
@@ -148,20 +147,25 @@ class HadesParams:
         R_ext_beg       : number of external rounds before the internal rounds; default R_ext // 2
         R_ext_end       : number of external rounds after the internal rounds; default R_ext - R_ext_beg
         u               : number of branches the S-box hits in internal rounds; default 1
+        r               : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
+        c               : capacity (number of inner state elements for sponge); derived if not provided
+        d               : digest size for generic fixed-output sponge (number of output elements); derived if not provided
         kappa           : target security level in bits (default 128)
-        r/c/d are derived from kappa/t via derive_rate_capacity_digest if not provided.
+        toy             : if True, recommendation-level checks warn instead of raising (default False)
         """
 
         # Input sanitization
         HadesParams._input_sanitization(SimpleNamespace(**{k: v for k, v in locals().items() if k != "self"}))
 
+        # General settings
         self.p = p
         self.F = GF(p)
         self.t = t
         self.kappa = kappa
+        self.toy = toy
 
-        # Hash modes
-        self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
+        # Sponge parameters
+        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
 
         # Rounds
         if R_ext is None or R_int is None:
@@ -224,7 +228,7 @@ class HadesParams:
         # --- Warnings (recommended, not required) ---
         field_bits = int(params.p).bit_length()
         if field_bits < 31:
-            warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
+            recommend(f"TOY VERSION: field is only {field_bits} bits", params.toy)
 
     def _parameter_sanitization(self):
         """Validate the fully-constructed parameter object (stored/derived values):
@@ -301,13 +305,13 @@ class PoseidonParams(HadesParams):
 
     def __init__(self, *, p, t, alpha, R_ext, R_int, r=None, c=None, d=None,
                  R_ext_beg=None, R_ext_end=None, version="isec", mds_strategy="sampled",
-                 M=None, rcons=None, u=1, kappa=128):
+                 M=None, rcons=None, u=1, kappa=128, toy=False):
         if mds_strategy not in self.MDS_STRATEGIES:
             raise ValueError(f"Unknown mds_strategy {mds_strategy!r}. Use one of {self.MDS_STRATEGIES}.")
         self.mds_strategy = mds_strategy
         super().__init__(p=p, t=t, alpha=alpha, R_ext=R_ext, R_int=R_int, r=r, c=c, d=d, version=version,
                          M_ext=M, M_int=M, rcons=rcons,
-                         R_ext_beg=R_ext_beg, R_ext_end=R_ext_end, u=u, kappa=kappa)
+                         R_ext_beg=R_ext_beg, R_ext_end=R_ext_end, u=u, kappa=kappa, toy=toy)
         self.M = self.M_ext  # alias (single MDS)
 
     def _init_cons(self):
@@ -343,11 +347,11 @@ class Poseidon2Params(HadesParams):
 
     def __init__(self, *, p, t, alpha, R_ext, R_int, r=None, c=None, d=None,
                  R_ext_beg=None, R_ext_end=None, version="isec",
-                 M_ext=None, rcons=None, mat_diag=None, u=1, kappa=128):
+                 M_ext=None, rcons=None, mat_diag=None, u=1, kappa=128, toy=False):
         self.mat_diag = mat_diag
         super().__init__(p=p, t=t, alpha=alpha, R_ext=R_ext, R_int=R_int, r=r, c=c, d=d, version=version,
                          rcons=rcons, M_ext=M_ext, M_int=None, # M_int is always J + diag(mat_diag)
-                         R_ext_beg=R_ext_beg, R_ext_end=R_ext_end, u=u, kappa=kappa)
+                         R_ext_beg=R_ext_beg, R_ext_end=R_ext_end, u=u, kappa=kappa, toy=toy)
 
     def _init_cons(self):
         """Grid R x t: external rounds draw t constants, internal rounds draw u constants
@@ -402,13 +406,13 @@ class NeptuneParams(HadesParams):
     matrix is applied by _pre_rounds."""
 
     def __init__(self, *, p, t, alpha, R_ext, R_int, r=None, c=None, d=None,
-                 R_ext_beg=None, R_ext_end=None, M_ext=None, rcons=None, mat_diag=None, u=1, kappa=128):
+                 R_ext_beg=None, R_ext_end=None, M_ext=None, rcons=None, mat_diag=None, u=1, kappa=128, toy=False):
         if t % 2 != 0:
             raise ValueError("Neptune state size t must be even")
         self.mat_diag = mat_diag
         super().__init__(p=p, t=t, alpha=alpha, R_ext=R_ext, R_int=R_int, r=r, c=c, d=d,
                          M_ext=M_ext, rcons=rcons,           # M_int is always J + diag(mat_diag)
-                         R_ext_beg=R_ext_beg, R_ext_end=R_ext_end, u=u, kappa=kappa)
+                         R_ext_beg=R_ext_beg, R_ext_end=R_ext_end, u=u, kappa=kappa, toy=toy)
         # gamma is the next nonzero SHAKE draw after the internal-matrix diagonal mu.
         # Lai-Massey parameters
         self.lm_alpha = self.to_field(1)        # Lai-Massey multiplier; = 1 in the Neptune spec

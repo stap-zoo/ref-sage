@@ -225,7 +225,7 @@ def test_rounds_derivation_matches_instance(name, params):
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        pSquareHashParams(p=8191, t=4, R=6, r=2, c=2, d=2)  # tiny field
+        pSquareHashParams(p=8191, t=4, R=6, r=2, c=2, d=2, toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])

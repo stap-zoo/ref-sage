@@ -7,7 +7,7 @@
 # the user-facing parameters and expands them into a fully-specified instance
 # that the permutation, hash modes, instances and tests consume. Any value the
 # user omits is filled in by the matching _init_* helper (or, for r/c/d, by the
-# shared derive_rate_capacity_digest). The subclasses differ only in their
+# shared resolve_sponge_params). The subclasses differ only in their
 # _init_* derivations (round number, MDS matrix, round constants); the base
 # constructor and validation are shared. Settings that depart from the
 # recommended ones raise a ParamRecommendationWarning rather than an error.
@@ -15,7 +15,7 @@
 
 # Structural imports
 import warnings
-from recommendations import ParamRecommendationWarning
+from recommendations import ParamRecommendationWarning, recommend
 from types import SimpleNamespace
 
 # Math specific imports
@@ -26,7 +26,7 @@ from sage.all import GF, Integer, matrix, vector, flatten, PolynomialRing
 from utils.matrix import vandermonde_mds_matrix, map_nested, invert_matrix, circulant
 from utils.sampler import XOFFieldElementSampler
 from utils.complexities import gb_comp
-from utils.mode import derive_rate_capacity_digest
+from utils.mode import resolve_sponge_params
 from utils.field import GOLDILOCKS, MERSENNE31
 from utils.poly import poly_to_aos, map_coeffs, univ_from_list, power_map_coordinate_polys, diff_polys_list
 
@@ -68,10 +68,13 @@ class RescueParams:
         g:         int = None,
         M:         list[list[int]] = None,
         rcons:     list[list[int]] = None,
+        # Sponge parameters (derived if not provided)
         r:         int = None,
         c:         int = None,
         d:         int = None,
+        # Target security level (default 128 bits)
         kappa:     int = 128,
+        toy:       bool = False,
     ):
         """
         Parameters
@@ -84,13 +87,14 @@ class RescueParams:
         g         : a primitive element of GF(p) (e.g. Field.generator); _init_g if not provided
         M         : MDS matrix (txt); generated via _init_mat if not provided
         rcons     : (2*R+1)xt round-constants; generated via _init_cons if not provided
-        r         : rate; derived from kappa/t via derive_rate_capacity_digest if not provided
-        c         : capacity (number of inner state elements); derived if not provided
-        d         : digest size (number of output elements); derived if not provided
+        r         : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
+        c         : capacity (number of inner state elements for sponge); derived if not provided
+        d         : digest size for generic fixed-output sponge (number of output elements); derived if not provided
         kappa     : target security level in bits (default 128)
+        toy       : if True, recommendation-level checks warn instead of raising (default False)
         """
 
-        # Check raw inputs
+        # Input sanitization
         RescueParams._input_sanitization(SimpleNamespace(**{k: v for k, v in locals().items() if k != "self"}))
 
         # General settings
@@ -98,13 +102,16 @@ class RescueParams:
         self.F = GF(p)
         self.t = t
         self.kappa = kappa
+        self.toy = toy
+
+        # Sponge parameters
+        if d is None and r is not None:
+            d = r // 2  
+        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
 
         # Non-linear layer
         self.alpha = alpha if alpha is not None else self._init_alpha()
         self.alpha_inv = alpha_inv if alpha_inv is not None else self._init_alpha_inv()
-
-        # Hash modes (set before rounds: the round-number derivation depends on d)
-        self.r, self.c, self.d = derive_rate_capacity_digest(self.kappa, self.t, r, c, d)
 
         # Rounds
         self.R = R if R is not None else self._init_rounds()
@@ -151,7 +158,7 @@ class RescueParams:
         # --- Warnings (recommended, not required) ---
         field_bits = int(params.p).bit_length()
         if field_bits < 31:
-            warnings.warn(f"TOY VERSION: field is only {field_bits} bits", ParamRecommendationWarning, stacklevel=2)
+            recommend(f"TOY VERSION: field is only {field_bits} bits", params.toy)
     
     def _parameter_sanitization(self):
         """Validate the fully-constructed parameter object (stored/derived values):
@@ -369,7 +376,7 @@ class XHashParams(RescuePrimeOptimizedParams):
         # If not XHash12 of XHash24, undocumented variant
         if not ((self.p == GOLDILOCKS.p and self.t == 12) or (self.p == MERSENNE31.p and self.t == 24)):
             msg = f"TOY VERSION: This is not an officially recommended version"
-            warnings.warn(msg, ParamRecommendationWarning, stacklevel=2)
+            recommend(msg, self.toy)
 
     def _init_mat(self) -> list[list[int]]:
         """The pinned matrices: RPO's circulant for t = 12 (RPO_MDS_ROWS) and the

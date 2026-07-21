@@ -198,7 +198,7 @@ def vandermonde_mds_matrix(p: int, t: int, generator: int, transpose: bool = Fal
 
     Note: dense MDS matrix with unstructured full-size entries
 
-    This method is used by Rescue (transpose=False) and Rescue Prime / RPO (transpose=True)
+    This method is used by Rescue (transpose=False), Rescue Prime / RPO (transpose=True), and Grendel (transpose=True).
     """
     F = GF(p)
     g = F(generator)
