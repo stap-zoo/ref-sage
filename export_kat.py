@@ -5,7 +5,7 @@ Usage:
 
 where <construction> is one of:
     gmimc, neptune, poseidon, poseidon2, rescue-prime, anemoi, arion, griffin,
-    skyscraper
+    skyscraper, polocolo
 
 """
 
@@ -32,6 +32,7 @@ CONSTRUCTIONS = {
     "arion":        ("arion.hash",      "Arion",       "arion.instances",      "ARION_"),
     "griffin":      ("griffin.hash",    "Griffin",     "griffin.instances",    "GRIFFIN_"),
     "skyscraper":   ("skyscraper.hash", "Skyscraper",  "skyscraper.instances", "SKYSCRAPER_"),
+    "polocolo":     ("polocolo.hash",   "Polocolo",    "polocolo.instances",   "POLOCOLO_"),
 }
 
 # Aliases accepted on the command line (all normalised to the keys above).
@@ -127,8 +128,7 @@ def main():
     )
     ap.add_argument(
         "construction",
-        help="one of: " + ", ".join(CONSTRUCTIONS)
-             + " (polocolo is not implemented in this repo yet)",
+        help="one of: " + ", ".join(CONSTRUCTIONS),
     )
     args = ap.parse_args()
 
