@@ -2,17 +2,8 @@
 # ---------------------------------------------------------------------------
 # Polocolo: the permutation (round function) and the hash mode built on it.
 #
-# Constructed from a fully-specified PolocoloParams object; this class only
-# *applies* the parameters, never derives or validates them. The design goal is
-# fidelity to the specification (https://eprint.iacr.org/2025/926, Section 4.2),
-# not speed.
-#
-# The nonlinear layer applies the power-residue S-box 
-# 
-#   S(x) = x^{-1} * T[x^((p-1)/m)] 
-# 
-# to every state element.
-#
+# Constructed from a fully-specified PolocoloParams object.
+
 # NOTE: the S-box (_sbox / _sbox_inv) is a lookup-table component: it keys a
 # precomputed table by the integer value of the power residue x^((p-1)/m). It is
 # therefore inherently NON-generic -- it branches on the value of a state element
@@ -25,8 +16,7 @@
 # ---------------------------------------------------------------------------
 
 from polocolo.params import PolocoloParams
-from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
-from utils.mode import hash_sponge, pad_zero
+from utils.matrix import matvecmul, vecadd, vecsub
 
 
 class Polocolo:
@@ -59,9 +49,7 @@ class Polocolo:
         self.rcons = params.rcons
 
         # Hash modes
-        self.r = params.r
-        self.c = params.c
-        self.d = params.d
+        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component layers
@@ -158,23 +146,7 @@ class Polocolo:
 
     # ---------------------------------------------------------------------------
     # Hash modes
-    #
-    # Polocolo is turned into a hash function via the standard sponge (Section 2);
-    # for the official ~255-bit fields a capacity of one element gives 128-bit
-    # security, so r = t-1, c = 1, d = 1 (derived in params).
     # ---------------------------------------------------------------------------
 
     def hash_sponge(self, data: list) -> list:
-        padded_data, _ = pad_zero(data, self.r, self.to_field)
-        IV = [self.F.zero()] * self.c
-        return hash_sponge(
-            perm=self.permutation,
-            data=padded_data,
-            state_size=self.t,
-            rate=self.r,
-            capacity=self.c,
-            digest_size=self.d,
-            IV=IV,
-            absorb=add_to_start,
-            to_field=self.to_field,
-        )
+        return self.sponge.hash(self.permutation, data, input_len_fixed=True)

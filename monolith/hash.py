@@ -14,9 +14,9 @@
 # ---------------------------------------------------------------------------
 
 from monolith.params import MonolithParams
-from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
+from utils.matrix import matvecmul, vecadd, vecsub
 from utils.lut import mixed_radix_decompose, mixed_radix_compose
-from utils.mode import compress_davies_meyer, hash_sponge_safe, pad_zero
+from utils.mode import compress_davies_meyer
 
 class Monolith:
     def __init__(self, params: MonolithParams):
@@ -43,9 +43,7 @@ class Monolith:
         self.rcons = params.rcons
 
         # Hash modes
-        self.r = params.r
-        self.c = params.c
-        self.d = params.d
+        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -151,29 +149,18 @@ class Monolith:
 
     def compress_2_to_1(self, x1: list, x2: list) -> list:
         """2-to-1 compression defined for small state sizes double the digest size"""
-        if self.t != 2 * self.d:
-            raise ValueError(f"Compression mode not defined for state size {self.t} and digest size {self.d}.")
-        if len(x1) != self.d or len(x2) != self.d:
-            raise ValueError(f"Invalid input sizes. Expected ({self.d},{self.d}), got ({len(x1)},{len(x2)})")
+        d = self.sponge.d # TODO replace with compression digest (usually the same)
+        if self.t != 2 * d:
+            raise ValueError(f"Compression mode not defined for state size {self.t} and digest size {d}.")
+        if len(x1) != d or len(x2) != d:
+            raise ValueError(f"Invalid input sizes. Expected ({d},{d}), got ({len(x1)},{len(x2)})")
         return compress_davies_meyer(
             perm=self.permutation,
             x_m=x1,
             x_c=x2,
-            digest_size=self.d,
+            digest_size=d,
             to_field=self.to_field,
         )
 
     def hash_sponge(self, data: list) -> list:
-        padded_data, _ = pad_zero(data, self.r, self.to_field)
-        IV = [self.F.zero()] * self.c
-        return hash_sponge_safe(
-            perm=self.permutation,
-            data=padded_data,
-            state_size=self.t,
-            rate=self.r,
-            capacity=self.c,
-            digest_size=self.d,
-            IV=IV,
-            absorb=add_to_start,
-            to_field=self.to_field,
-        )
+        return self.sponge.hash(self.permutation, data)

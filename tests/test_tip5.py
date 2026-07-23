@@ -210,8 +210,8 @@ def test_permutation_distinct_inputs(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_hash_output_size(name, params):
     prim = Tip5(params)
-    data = [prim.F.random_element() for _ in range(prim.r)]
-    assert len(prim.hash_sponge(data)) == prim.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r)]
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +238,7 @@ def test_params_derive_constants():
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_hash_rejects_wrong_length(name, params):
     prim = Tip5(params)
-    data = [prim.F.random_element() for _ in range(prim.r + 1)]
+    data = [prim.F.random_element() for _ in range(prim.sponge.r + 1)]
     with pytest.raises(ValueError):
         prim.hash_sponge(data)
 
@@ -266,4 +266,4 @@ def test_recommended_instance_no_warning(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("error", ParamRecommendationWarning)
         Tip5Params(p=params.p, t=params.t, R=params.R, u=params.u,
-              r=params.r, c=params.c, d=params.d, kappa=params.kappa)
+              r=params.sponge.r, c=params.sponge.c, d=params.sponge.d, kappa=params.kappa)

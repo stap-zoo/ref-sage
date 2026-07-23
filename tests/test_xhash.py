@@ -50,7 +50,7 @@ def _derive(inst, cpolys, skipbox, **override):
     left for the derivation helpers (unless overridden)."""
     kw = dict(
         p=inst.p, t=inst.t, alpha=int(inst.alpha), alpha_inv=inst.alpha_inv,
-        kappa=inst.kappa, r=inst.r, c=inst.c, R=inst.R, d=inst.d,
+        kappa=inst.kappa, r=inst.sponge.r, c=inst.sponge.c, R=inst.R, d=inst.sponge.d,
         cpolys=cpolys, skipbox=skipbox, M=None, rcons=None,
     )
     kw.update(override)
@@ -212,7 +212,7 @@ def test_layer_roundtrip(name, params):
 def test_digest_size(name, params):
     prim = XHash(params)
     out = prim.hash_sponge([prim.to_field(0)])
-    assert len(out) == prim.r // 2 == prim.d
+    assert len(out) == prim.sponge.r // 2 == prim.sponge.d
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)

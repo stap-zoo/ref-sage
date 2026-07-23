@@ -37,9 +37,7 @@
 # ---------------------------------------------------------------------------
 
 from myprimitive.params import MyPrimitiveParams
-from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
-from utils.mode import hash_sponge, pad_zero
-
+from utils.matrix import matvecmul, vecadd, vecsub
 
 class MyPrimitive:
     # ---------------------------------------------------------------------------
@@ -72,9 +70,7 @@ class MyPrimitive:
         self.rcons = params.rcons
 
         # Hash modes
-        self.r = params.r
-        self.c = params.c
-        self.d = params.d
+        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component layers
@@ -212,26 +208,17 @@ class MyPrimitive:
     # ---------------------------------------------------------------------------
 
     def hash_sponge(self, data: list) -> list:
-        # Sponge hash using rate self.r and capacity self.c, squeezing self.d
-        # elements (self.r + self.c == self.t).
-        padded_data, _ = pad_zero(data, self.r, self.to_field)
-        IV = [self.F.zero()] * self.c
-        return hash_sponge(
-            perm=self.permutation,
-            data=padded_data,
-            state_size=self.t,
-            rate=self.r,
-            capacity=self.c,
-            digest_size=self.d,
-            IV=IV,
-            absorb=add_to_start,
-            to_field=self.to_field,
-        )
+        # Sponge hash as defined in MyPrimitiveParams.
+        return self.sponge.hash(self.permutation, data)
 
-    def compress(self, data: list) -> list:
-        # General compression function (e.g. Jive mode, or truncation with a
-        # feed-forward). Not all primitives define this.
-        raise NotImplementedError
+    def compress(self, data: list, digest: int = None) -> list:
+        """General state-to-digest compression. Not all primitives define this."""
+        d = self.sponge.d # TODO replace with compression digest (usually the same)
+        d = d if digest is None else digest
+        if len(data) != self.t:
+            raise ValueError(f"compression input must fill the state: expected {self.t}, got {len(data)}")
+        
+        return compress()
 
     def compress_2_to_1(self, x: list, y: list) -> list:
         # 2-to-1 compression (or 3-to-1, etc.), defined either via the `compress`

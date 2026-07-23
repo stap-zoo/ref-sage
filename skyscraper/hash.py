@@ -2,35 +2,21 @@
 # ---------------------------------------------------------------------------
 # Skyscraper: the permutation (round function) and the hash modes built on it.
 #
-# Constructed from a fully-specified SkyscraperParams object; this class only
-# *applies* the parameters, never derives or validates them.
+# Constructed from a fully-specified SkyscraperParams object.
 #
-# Skyscraper is a 2-branch FEISTEL over GF(p^n) -- not an SPN -- so it does not
-# use the constant_addition / linear_layer / nonlinear_layer template. The state
-# is the flattened two branches, each a list of n base-field coordinates:
-#       state = xL + xR,   xL = [l0, ..., l_{n-1}],  xR = [r0, ..., r_{n-1}]
-# No extension field is ever constructed here: extension-element addition and
-# scalar (constant) multiplication are componentwise, and the squaring is the
-# evaluation of the coordinate polynomials (params.cpolys).
-#
-# Two round functions, chosen by round index (Square unless i in bar_rounds):
-#   * Square: x -> x^2 * mont_R_inv     (generic: ring ops + cpolys evaluation)
-#   * Bar:    x -> Bar(x)               (a LOOKUP/bit-manipulation S-box)
-# the round constant rcons[i] is then added. Like Monolith's _bar, the Bar
-# component is non-generic: it operates on the integer representation of each
-# coordinate (decompose -> rotate -> LUT -> compose) and cannot run
-# symbolically over a polynomial ring. The Square component can.
-#
-# Inverting a Feistel needs only the FORWARD round function (the branch it is
-# applied to is carried through unchanged), so permutation_inv subtracts the same
-# round_fun -- the Bar S-box itself is never inverted there.
+# NOTE: the split-and-lookup S-box (_sl_sbox / _sl_sbox_inv, used by nonlinear_layer on
+# the first u branches) decomposes a field element into bytes and applies a
+# precomputed LUT. It is therefore inherently NON-generic -- it operates on the
+# integer representation and cannot run symbolically over a polynomial ring,
+# unlike the power-map branch of nonlinear_layer and the AffineLayer. This is a
+# deliberate exception to the "generic component" contract.
 # ---------------------------------------------------------------------------
 
 from skyscraper.params import SkyscraperParams
-from utils.matrix import vecadd, vecsub, add_to_start
+from utils.matrix import vecadd, vecsub
 from utils.lut import mixed_radix_decompose, mixed_radix_compose
 from utils.poly import eval_aos
-from utils.mode import compress_davies_meyer, hash_sponge_safe, pad_zero
+from utils.mode import compress_davies_meyer
 
 
 class Skyscraper:
@@ -59,9 +45,7 @@ class Skyscraper:
         self.rcons = params.rcons
 
         # Hash modes
-        self.r = params.r
-        self.c = params.c
-        self.d = params.d
+        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Round functions (each maps one branch of n coordinates to n coordinates)
@@ -153,18 +137,4 @@ class Skyscraper:
         return self.compress(list(x1) + list(x2))
 
     def hash_sponge(self, data: list) -> list:
-        """Generic sponge over the flat 2n-element state. Rate r, capacity c, digest d."""
-        # TODO update to SAFE mode
-        padded_data, _ = pad_zero(data, self.r, self.to_field)
-        IV = [self.F.zero()] * self.c
-        return hash_sponge_safe(
-            perm=self.permutation,
-            data=padded_data,
-            state_size=self.t,
-            rate=self.r,
-            capacity=self.c,
-            digest_size=self.d,
-            IV=IV,
-            absorb=add_to_start,
-            to_field=self.to_field,
-        )
+        return self.sponge.hash(self.permutation, data)

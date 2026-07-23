@@ -176,9 +176,10 @@ def test_permutation_distinct_inputs(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
     prim = RescuePrime(params)
-    #data = [prim.F.random_element() for _ in range(prim.r * 2)] # TODO implement variable length sponge or catch exception
-    data = [prim.F.random_element() for _ in range(prim.r // 2)] 
-    assert len(prim.hash_sponge(data)) == prim.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r // 2)]
+    assert len(prim.hash_sponge(data, variable_length=True)) == prim.sponge.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
+    assert len(prim.hash_sponge(data, variable_length=False)) == prim.sponge.d
 
 # ---------------------------------------------------------------------------
 # 4.4 (cont.) Algebraic: parameter generation
@@ -193,7 +194,7 @@ def test_vandermonde_mds_matrix_goldilocks_rescue_prime():
 def test_field_element_sampler_bls12_rescue_prime():
     params = RESCUE_PRIME_BLS12_T3
     p = params.p
-    seed = f"Rescue-XLIX({p},{params.t},{params.c},{params.kappa})".encode("ascii")
+    seed = f"Rescue-XLIX({p},{params.t},{params.sponge.c},{params.kappa})".encode("ascii")
     rc = XOFFieldElementSampler(seed=seed, p=p, xof="shake_256", sampling="mod").grid(2 * params.R, params.t)
     assert len(rc) == 2 * params.R
     assert rc == [[params.from_field(x) for x in row] for row in params.rcons]
@@ -219,4 +220,4 @@ def test_recommended_instance_no_warning(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("error", ParamRecommendationWarning)
         RescuePrimeParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
-                          r=params.r, c=params.c, d=params.d)
+                          r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)

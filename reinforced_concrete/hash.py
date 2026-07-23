@@ -3,8 +3,7 @@
 # Reinforced Concrete: the permutation (round function) and the hash modes built
 # on it.
 #
-# Constructed from a fully-specified ReinforcedConcreteParams object; this class
-# only *applies* the parameters, never derives or validates them.
+# Constructed from a fully-specified ReinforcedConcreteParams object.
 #
 # NOTE: the _bars component (and its per-element _bar helper) is a lookup-table S-box:
 # it decomposes a field element into integer digits and applies a precomputed
@@ -15,9 +14,9 @@
 # ---------------------------------------------------------------------------
 
 from reinforced_concrete.params import ReinforcedConcreteParams
-from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
+from utils.matrix import matvecmul, vecadd, vecsub
 from utils.lut import mixed_radix_decompose, mixed_radix_compose
-from utils.mode import compress_davies_meyer, hash_sponge, pad_zero
+from utils.mode import compress_davies_meyer
 
 class ReinforcedConcrete:
     # ---------------------------------------------------------------------------
@@ -54,9 +53,7 @@ class ReinforcedConcrete:
         self.rcons = params.rcons
 
         # Hash modes
-        self.r = params.r
-        self.c = params.c
-        self.d = params.d
+        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -172,31 +169,8 @@ class ReinforcedConcrete:
     # Hash modes
     # ---------------------------------------------------------------------------
 
-    def compress_2_to_1(self, x1: list, x2:list) -> list:
-        """2-to-1 compression defined for large state sizes triple the digest size"""
-        if self.t != 3 * self.d:
-            raise ValueError(f"Compression mode not defined for state size {self.t} and digest size {self.d}.")
-        if len(x1) != self.d or len(x2) != self.d:
-            raise ValueError(f"Invalid input sizes. Expected ({self.d},{self.d}), got ({len(x1)},{len(x2)})")
-        return compress_davies_meyer(
-            perm=self.permutation, 
-            x_m=x1 + x2, 
-            x_c=[self.F.zero()] * self.d, 
-            digest_size=self.d, 
-            to_field=self.to_field
-        )
-
     def hash_sponge(self, data: list) -> list:
-        padded_data, _ = pad_zero(data, self.r, self.to_field)
-        IV = [self.F.zero()] * self.c
-        return hash_sponge(
-            perm=self.permutation, 
-            data=padded_data, 
-            state_size=self.t, 
-            rate=self.r, 
-            capacity=self.c, 
-            digest_size=self.d, 
-            IV=IV,
-            absorb=add_to_start,
-            to_field=self.to_field
-        )
+        return self.sponge.hash(self.permutation, data)
+
+    def hash_2_to_1(self, x1: list, x2:list) -> list:
+        return self.sponge.tree_hash(self.permutation, children=[x1,x2], arity=2)

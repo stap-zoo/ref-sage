@@ -2,12 +2,11 @@
 # ---------------------------------------------------------------------------
 # Parameter definition for Anemoi: the AnemoiParams class.
 #
-# AnemoiParams is the single source of truth for an instance. It sanitizes the
+# AnemoiParams is the single source of truth for an instance. It sanitizes 
 # user-facing parameters and expands them into a fully-specified instance that
 # the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper (or, for r/c/d, by the shared
-# resolve_sponge_params). Settings that depart from the recommended ones
-# raise a ParamRecommendationWarning rather than an error.
+# omits is filled in by the matching _init_* helper. Settings that depart from 
+# the recommended ones raise a ParamRecommendationWarning rather than an error.
 # ---------------------------------------------------------------------------
 
 # Structural imports
@@ -21,7 +20,7 @@ from sage.all import GF, Integer
 # Custom imports
 from utils.complexities import gb_comp
 from utils.matrix import circulant, is_mds, pht_matrix, dl_m33_52_matrix, dl_m46_83_matrix, map_nested, invert_matrix
-from utils.mode import resolve_sponge_params
+from utils.mode import SpongeHirose
 
 # Digits of pi, used to derive the round constants via an open butterfly.
 PI_0 = 1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679
@@ -91,7 +90,7 @@ class AnemoiParams:
         self.toy = toy
 
         # Sponge parameters
-        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
+        self.sponge = SpongeHirose(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
 
         # Non-linear layer (open Flystel)
         self.alpha = alpha if alpha is not None else self._init_alpha()
@@ -170,6 +169,7 @@ class AnemoiParams:
             raise ValueError(f"C and D must have one row per round: expected {self.R}, got {len(self.C)} and {len(self.D)}")
         if any(len(row) != self.l for row in self.C) or any(len(row) != self.l for row in self.D):
             raise ValueError(f"each C and D row must hold {self.l} elements")
+        # TODO make sure t and sponge.t are the same 
 
     # ---------------------------------------------------------------------------
     # Derivation helpers (defaults for the optional parameters)

@@ -8,7 +8,8 @@
 
 from anemoi.params import AnemoiParams
 from utils.matrix import matvecmul, vecadd, vecsub
-from utils.mode import compress_jive, hash_sponge_hirose, pad_one
+
+from utils.mode import compress_jive
 
 
 class Anemoi:
@@ -23,6 +24,7 @@ class Anemoi:
         self.l = params.l
         self.t = params.t
         self.kappa = params.kappa
+        self.toy = params.toy
 
         # Rounds
         self.R = params.R
@@ -45,9 +47,7 @@ class Anemoi:
         self.D = params.D
 
         # Hash modes
-        self.r = params.r
-        self.c = params.c
-        self.d = params.d
+        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component functions (state is x || y with x = state[:l], y = state[l:])
@@ -171,25 +171,10 @@ class Anemoi:
             raise ValueError(f"Invalid input sizes. Expected ({self.l},{self.l}), got ({len(x)},{len(y)})")
         return compress_jive(
             perm=self.permutation,
-            inputs=[x,y],
-            b=2,
+            state=x + y,
+            d=self.t//2,
             to_field=self.to_field,
         )
 
     def hash_sponge(self, data: list) -> list:
-        # Domain separator sigma = 1 for rate-aligned non-empty messages; everything
-        # else (including the empty message) is padded with a 1 followed by zeros.
-        if len(data) % self.r == 0 and len(data) != 0:
-            padded_data, sigma = list(data), 1
-        else:
-            (padded_data, _), sigma = pad_one(data, self.r, self.to_field), 0
-        return hash_sponge_hirose(
-            perm=self.permutation,
-            data=padded_data,
-            state_size=self.t,
-            rate=self.r,
-            capacity=self.c,
-            digest_size=self.d,
-            sigma=sigma,
-            to_field=self.to_field,
-        )
+        return self.sponge.hash(self.permutation, data)

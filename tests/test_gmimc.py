@@ -168,8 +168,8 @@ def test_permutation_output_size(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_sponge_output_size(name, params):
     prim = GMiMC(params)
-    data = [prim.F.random_element() for _ in range(prim.r)]
-    assert len(prim.hash_sponge(data)) == prim.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r)]
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +190,7 @@ def test_linear_layer_matches_matrix(name, params):
 def test_generated_matches_instance(name, params):
     # Rebuilding the params without M / rcons must reproduce the pinned instance.
     derived = GMiMCParams(p=params.p, t=params.t, R=params.R,
-                          r=params.r, c=params.c, d=params.d)
+                          r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
     assert derived.M == params.M
     assert derived.rcons == params.rcons
 
@@ -199,7 +199,7 @@ def test_generated_matches_instance(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_rounds_derivation_matches_instance(name, params):
     derived = GMiMCParams(p=params.p, t=params.t,
-                          r=params.r, c=params.c, d=params.d)  # R omitted -> _init_rounds
+                          r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # R omitted -> _init_rounds
     assert derived.R == params.R
 
 
@@ -229,7 +229,7 @@ def test_recommended_instance_no_warning(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("error", ParamRecommendationWarning)
         GMiMCParams(p=params.p, t=params.t, R=params.R,
-                    r=params.r, c=params.c, d=params.d)
+                    r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
 
 
 def test_constants_reproducible():

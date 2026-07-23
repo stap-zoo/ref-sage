@@ -2,16 +2,11 @@
 # ---------------------------------------------------------------------------
 # Parameter definition for MyPrimitive: the MyPrimitiveParams class.
 #
-# MyPrimitiveParams is the single source of truth for an instance. It takes a
-# small set of user-facing parameters and expands them into a fully-specified
-# instance: it sanitizes the inputs and stores/derives parameters. Every other 
-# file (permutation, hash/sponge wrapper, instances, test vectors) consumes a
-# MyPrimitiveParams object.
-#
-# Any value the user omits is filled in by the matching _init_* helper. An
-# analyst can override parameters to spin up toy or reduced instances
-# for cryptanalysis without editing this file. Settings that depart from the
-# recommended ones raise a ParamRecommendationWarning rather than an error.
+# MyPrimitiveParams is the single source of truth for an instance. It sanitizes 
+# user-facing parameters and expands them into a fully-specified instance that
+# the permutation, hash modes, instances and tests consume. Any value the user
+# omits is filled in by the matching _init_* helper. Settings that depart from 
+# the recommended ones raise a ParamRecommendationWarning rather than an error.
 # ---------------------------------------------------------------------------
 
 # Structural imports
@@ -24,7 +19,7 @@ from sage.all import GF, Integer
 
 # Custom imports
 from utils.matrix import map_nested, invert_matrix, simple_circulant_matrix
-from utils.mode import resolve_sponge_params
+from utils.mode import SpongePlain
 # Add any other helpers your primitive needs, e.g.:
 # from complexities import gb_comp
 # from utils import circulant, XOFFieldElementSampler
@@ -83,8 +78,8 @@ class MyPrimitiveParams:
         self.kappa = kappa
         self.toy = toy
 
-        # Sponge parameters: derive r, c, d from kappa, p, t if not provided
-        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
+        # Sponge parameters: derive sponge instance and perform security checks
+        self.sponge = SpongePlain(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
 
         # Non-linear layer: any values associated to non-linear layer
         self.alpha = alpha if alpha is not None else self._init_alpha()

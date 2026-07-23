@@ -285,9 +285,10 @@ def test_permutation_distinct_inputs(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_sponge_output_size(name, params):
     prim = Poseidon2(params)
-    #data = [prim.F.random_element() for _ in range(prim.r * 3)] # TODO implement variable length sponge or catch exception
-    data = [prim.F.random_element() for _ in range(prim.r)]
-    assert len(prim.hash_sponge(data)) == prim.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r)]
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +318,7 @@ def test_recommended_instance_no_warning(name, params):
         warnings.simplefilter("error", ParamRecommendationWarning)
         Poseidon2Params(p=params.p, t=params.t, alpha=params.alpha,
                         R_ext=params.R_ext, R_int=params.R_int,
-                        r=params.r, c=params.c, d=params.d,
+                        r=params.sponge.r, c=params.sponge.c, d=params.sponge.d,
                         version=params.version, mat_diag=params.mat_diag)
 
 

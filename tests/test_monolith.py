@@ -175,9 +175,10 @@ def test_permutation_distinct_inputs(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
     prim = Monolith(params)
-    #data = [prim.F.random_element() for _ in range(prim.r * 3)]  # TODO implement variable length sponge or catch exception
-    data = [prim.F.random_element() for _ in range(prim.r)] 
-    assert len(prim.hash_sponge(data)) == prim.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r)] 
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +197,7 @@ def test_compress_output_size(name, params):
     half = prim.t // 2
     x1 = [prim.F.random_element() for _ in range(half)]
     x2 = [prim.F.random_element() for _ in range(half)]
-    assert len(prim.compress_2_to_1(x1, x2)) == prim.d
+    assert len(prim.compress_2_to_1(x1, x2)) == prim.sponge.d
 
 
 @pytest.mark.parametrize("name,params", NO_COMPRESS_INSTANCES, ids=[name for name, _ in NO_COMPRESS_INSTANCES])
@@ -228,7 +229,7 @@ def test_rcons_generated_matches_instance(name, params):
     M, _ = _instance_ints(params)
     derived = MonolithParams(p=params.p, t=params.t, R=params.R, u=params.u,
                              si=params.si, LUTs=params.LUTs, M=M,
-                             r=params.r, c=params.c, d=params.d)
+                             r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
     assert derived.rcons == params.rcons
 
 
@@ -237,7 +238,7 @@ def test_rcons_generated_matches_instance(name, params):
 def test_matrix_derivation_matches_instance(name, params):
     derived = MonolithParams(p=params.p, t=params.t, R=params.R, u=params.u,
                              si=params.si, LUTs=params.LUTs,
-                             r=params.r, c=params.c, d=params.d)  # M omitted -> _init_mat
+                             r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # M omitted -> _init_mat
     assert derived.M == params.M
 
 
@@ -247,7 +248,7 @@ def test_rounds_derivation_matches_instance(name, params):
     M, _ = _instance_ints(params)
     derived = MonolithParams(p=params.p, t=params.t, u=params.u,
                              si=params.si, LUTs=params.LUTs, M=M,
-                             r=params.r, c=params.c, d=params.d)  # R omitted -> _init_rounds
+                             r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # R omitted -> _init_rounds
     assert derived.R == params.R
 
 
@@ -270,7 +271,7 @@ def test_recommended_instance_no_warning(name, params):
         warnings.simplefilter("error", ParamRecommendationWarning)
         MonolithParams(p=params.p, t=params.t, R=params.R, u=params.u,
                        si=params.si, LUTs=params.LUTs, M=M,
-                       r=params.r, c=params.c, d=params.d)
+                       r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
 
 
 def test_constants_reproducible():

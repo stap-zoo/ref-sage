@@ -3,14 +3,11 @@
 # Parameter definitions for the Hades family: HadesParams and its subclasses
 # PoseidonParams, Poseidon2Params and NeptuneParams.
 #
-# Each params class is the single source of truth for an instance: it sanitizes
-# the user-facing parameters and expands them into a fully-specified instance
-# that the permutation, hash modes, instances and tests consume. Any value the
-# user omits is filled in by the matching _init_* helper (or, for r/c/d, by the
-# shared resolve_sponge_params). The subclasses differ only in their
-# _init_* derivations (round constants, external/internal matrices); the base
-# constructor and validation are shared. Settings that depart from the
-# recommended ones raise a ParamRecommendationWarning rather than an error.
+# Each params class is the single source of truth for an instance. It sanitizes
+# user-facing parameters and expands them into a fully-specified instance that
+# the permutation, hash modes, instances and tests consume. Any value the user
+# omits is filled in by the matching _init_* helper. Settings that depart from 
+# the recommended ones raise a ParamRecommendationWarning rather than an error.
 # ---------------------------------------------------------------------------
 
 # Structural imports
@@ -24,7 +21,7 @@ from sage.all import GF, Integer
 # Custom imports
 from utils.sampler import LFSRFieldElementSampler, XOFFieldElementSampler
 from utils.matrix import cauchy_mds_matrix, circulant, m4_to_block_circulant_matrix, dl_m44_84_matrix, ones_plus_diag_matrix, map_nested, invert_matrix
-from utils.mode import resolve_sponge_params
+from utils.mode import SpongeLE
 
 # ---------------------------------------------------------------------------
 # Grain LFSR settings (used by Poseidon/Poseidon2)
@@ -165,7 +162,7 @@ class HadesParams:
         self.toy = toy
 
         # Sponge parameters
-        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
+        self.sponge = SpongeLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
 
         # Rounds
         if R_ext is None or R_int is None:

@@ -162,9 +162,12 @@ def test_permutation_distinct_inputs(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
     prim = Griffin(params)
-    #data = [prim.F.random_element() for _ in range(prim.r * 3)] # TODO implement variable length sponge or catch exception
-    data = [prim.F.random_element() for _ in range(prim.r)]
-    assert len(prim.hash_sponge(data)) == prim.d
+    
+    data = [prim.F.random_element() for _ in range(prim.sponge.r)]
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
+
+    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +210,7 @@ def test_affine(field_name, field, alpha, t):
 def test_generated_matches_instance(name, params):
     # Rebuilding the params without M / constants must reproduce the pinned instance.
     derived = GriffinParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
-                            r=params.r, c=params.c, d=params.d)
+                            r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
     assert derived.M == params.M
     assert derived.rcons == params.rcons
     assert derived.coeffs_G == params.coeffs_G
@@ -217,7 +220,7 @@ def test_generated_matches_instance(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_rounds_derivation_matches_instance(name, params):
     derived = GriffinParams(p=params.p, t=params.t, alpha=params.alpha,
-                            r=params.r, c=params.c, d=params.d)  # R omitted -> _init_rounds
+                            r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # R omitted -> _init_rounds
     assert derived.R == params.R
 
 
@@ -241,7 +244,7 @@ def test_recommended_instance_no_warning(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("error", ParamRecommendationWarning)
         GriffinParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
-                      r=params.r, c=params.c, d=params.d)
+                      r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
 
 
 def test_constants_reproducible():

@@ -2,20 +2,14 @@
 # ---------------------------------------------------------------------------
 # Parameter definition for Polocolo: the PolocoloParams class.
 #
-# Polocolo (Ha, Hwang, Lee, Park, Son, Eurocrypt 2025,
-# https://eprint.iacr.org/2025/926) is a ZK-friendly SPN hash function over F_p^t
-# whose S-box is built from m-th power residues: for m | p-1 the residue
-# x^((p-1)/m) takes only m+1 distinct values, so it can drive a lookup table T
-# of size m+1 and S(x) = x^{-1} * T[x^((p-1)/m)] is evaluated with one table
-# lookup (cheap under Plonk lookup arguments). The official instances live on
-# the scalar fields of the BLS12-381 and BN254 curves.
+# PolocoloParams is the single source of truth for an instance. It sanitizes 
+# user-facing parameters and expands them into a fully-specified instance that
+# the permutation, hash modes, instances and tests consume. Any value the user
+# omits is filled in by the matching _init_* helper. Settings that depart from 
+# the recommended ones raise a ParamRecommendationWarning rather than an error.
 #
-# PolocoloParams is the single source of truth for an instance. It sanitizes
-# the user-facing parameters and expands them into a fully-specified instance
-# that the permutation, hash modes, instances and tests consume. Any value the
-# user omits is filled in by the matching _init_* helper (or, for r/c/d, by the
-# shared resolve_sponge_params). Settings that depart from the
-# recommended ones raise a ParamRecommendationWarning rather than an error.
+# NOTE: Polocolo did not fix concrete Sponge, they just write "some appropriate 
+# padding". We here use Sponge2 for simplicity.
 # ---------------------------------------------------------------------------
 
 # Structural imports
@@ -30,8 +24,8 @@ from math import log2
 # Custom imports
 from utils.lut import power_residue_sigma, power_residue_lut, power_residue_lut_inv
 from utils.matrix import map_nested, invert_matrix, circulant, dl_m44_84_matrix, low_addition_mds_matrix
-from utils.mode import resolve_sponge_params
 from utils.sampler import XOFFieldElementSampler
+from utils.mode import Sponge2
 from utils.complexities import uni_solve_comp
 from utils.field import BLS12_381_SCALAR, BN254_SCALAR, find_smallest_generator
 
@@ -155,7 +149,7 @@ class PolocoloParams:
         self.toy = toy
 
         # Sponge parameters
-        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
+        self.sponge = Sponge2(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
 
         # Non-linear layer: the power-residue S-box S(x) = x^{-1} * T[x^ann] with
         # ann = (p-1)/m, realised as the lookup tables LUT / LUT_inv over sigma.

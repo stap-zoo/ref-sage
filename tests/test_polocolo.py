@@ -1189,7 +1189,7 @@ def test_permutation_distinct_inputs(name, params):
 def test_output_sizes(name, params):
     prim = Polocolo(params)
     assert len(prim.permutation([prim.F.zero()] * prim.t)) == prim.t
-    assert len(prim.hash_sponge([prim.F.random_element() for _ in range(prim.r)])) == prim.d
+    assert len(prim.hash_sponge([prim.F.random_element() for _ in range(prim.sponge.r)])) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------

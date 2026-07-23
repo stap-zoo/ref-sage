@@ -165,9 +165,10 @@ def test_permutation_output_size(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[n for n, _ in INSTANCES])
 def test_sponge_output_size(name, params):
     prim = MyPrimitive(params)
-    #data = [prim.F.random_element() for _ in range(prim.r * 3)] # TODO implement variable length sponge or catch exception
-    data = [prim.F.random_element() for _ in range(prim.r)] 
-    assert len(prim.hash_sponge(data)) == prim.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r)] 
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)] # TODO implement variable length sponge or catch exception
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +214,7 @@ def test_generated_matches_instance():
     inst = MYPRIMITIVE_GOLDILOCKS_T3
     derived = MyPrimitiveParams(
         p=inst.p, t=inst.t, alpha=inst.alpha, R=inst.R,
-        r=inst.r, c=inst.c, d=inst.d, kappa=inst.kappa, toy=inst.toy,
+        r=inst.sponge.r, c=inst.sponge.c, d=inst.sponge.d, kappa=inst.kappa, toy=inst.toy,
     )  # M and rcons omitted -> _init_mat / _init_cons
     assert derived.M == inst.M
     assert derived.rcons == inst.rcons
@@ -227,7 +228,7 @@ def test_rounds_derivation_matches_instance():
     inst = MYPRIMITIVE_GOLDILOCKS_T3
     derived = MyPrimitiveParams(
         p=inst.p, t=inst.t, alpha=inst.alpha,
-        r=inst.r, c=inst.c, d=inst.d,
+        r=inst.sponge.r, c=inst.sponge.c, d=inst.sponge.d,
     )  # R omitted -> _init_rounds
     assert derived.R == inst.R
 
@@ -273,7 +274,7 @@ def test_recommended_instance_no_warning():
         warnings.simplefilter("error", ParamRecommendationWarning)
         MyPrimitiveParams(
             p=inst.p, t=inst.t, alpha=inst.alpha, R=inst.R,
-            r=inst.r, c=inst.c, d=inst.d, kappa=inst.kappa, toy=inst.toy,
+            r=inst.sponge.r, c=inst.sponge.c, d=inst.sponge.d, kappa=inst.kappa, toy=inst.toy,
         )
 
 

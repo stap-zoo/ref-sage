@@ -161,7 +161,7 @@ def test_permutation_distinct_inputs(name, params):
 def test_output_sizes(name, params):
     prim = Grendel(params)
     assert len(prim.permutation([prim.F.zero()] * prim.t)) == prim.t
-    assert len(prim.hash_sponge([prim.F.random_element() for _ in range(prim.r)])) == prim.d
+    assert len(prim.hash_sponge([prim.F.random_element() for _ in range(prim.sponge.r)])) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -293,8 +293,8 @@ def test_recommended_instance_no_warning():
 def test_params_reproducible(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ParamRecommendationWarning)
-        again = GrendelParams(p=params.p, t=params.t, r=params.r, c=params.c,
-                              d=params.d, kappa=params.kappa, toy=params.toy)
+        again = GrendelParams(p=params.p, t=params.t, r=params.sponge.r, c=params.sponge.c,
+                              d=params.sponge.d, kappa=params.kappa, toy=params.toy)
     assert again.alpha == params.alpha and again.R == params.R and again.g == params.g
     assert again.M == params.M
     assert again.rcons == params.rcons

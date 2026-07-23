@@ -2,25 +2,11 @@
 # ---------------------------------------------------------------------------
 # Parameter definition for Skyscraper: the SkyscraperParams class.
 #
-# SkyscraperParams is the single source of truth for an instance. It sanitizes
-# the user-facing parameters and expands them into a fully-specified instance
-# that the permutation, hash modes, instances and tests consume. Any value the
-# user omits is filled in by the matching _init_* helper (or, for r/c/d, by the
-# shared resolve_sponge_params). Settings that depart from the recommended
-# ones raise a ParamRecommendationWarning rather than an error.
-#
-# Skyscraper is a 2-branch Feistel over an (extension) field GF(p^n). It has no
-# linear layer -- so, deliberately, no _init_mat: the matrix-generation slot of
-# the common params contract is filled by _init_cpolys (the squaring coordinate
-# polynomials below). There is also no power-map permutation S-box; the two
-# round functions are:
-#   * Square: x -> x^2 * sigma_inv + rc   (sigma_inv is a Montgomery constant)
-#   * Bar:    x -> Bar(x) + rc            (a lookup/bit-manipulation S-box)
-# The squaring over GF(p^n) is captured -- exactly as in XHash -- by the
-# coordinate polynomials of x -> x^2 (cpolys), so the permutation never needs to
-# construct an extension field: addition and scalar (constant) multiplication of
-# extension elements are componentwise, and squaring is the cpolys evaluation.
-# The extension field is built ONCE here, only to derive cpolys from fmod.
+# SkyscraperParams is the single source of truth for an instance. It sanitizes 
+# user-facing parameters and expands them into a fully-specified instance that
+# the permutation, hash modes, instances and tests consume. Any value the user
+# omits is filled in by the matching _init_* helper. Settings that depart from 
+# the recommended ones raise a ParamRecommendationWarning rather than an error.
 # ---------------------------------------------------------------------------
 
 # Structural imports
@@ -36,8 +22,8 @@ from sage.all import GF, Integer, PolynomialRing
 # Custom imports
 from monolith.params import MONOLITH_LUT8   # Skyscraper's Bar reuses Monolith's 8-bit chi table
 from utils.sampler import XOFFieldElementSampler
+from utils.mode import SpongeSAFE
 from utils.matrix import map_nested
-from utils.mode import resolve_sponge_params
 from utils.poly import univ_from_list, power_map_coordinate_polys, poly_to_aos, map_coeffs
 
 class SkyscraperParams:
@@ -99,7 +85,7 @@ class SkyscraperParams:
         self.toy = toy
 
         # Sponge parameters
-        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
+        self.sponge = SpongeSAFE(kappa=kappa, p=p, t=self.t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
 
         # Extension degree n and Feistel state of 2 branches => t = 2*n base-field elements.
         if cpolys is not None:

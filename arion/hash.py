@@ -6,9 +6,7 @@
 # ---------------------------------------------------------------------------
 
 from arion.params import ArionParams
-from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
-from utils.mode import hash_sponge, pad_zero
-
+from utils.matrix import matvecmul, vecadd, vecsub
 
 class Arion:
     # ---------------------------------------------------------------------------
@@ -38,9 +36,7 @@ class Arion:
         self.rcons = params.rcons
 
         # Hash modes
-        self.r = params.r
-        self.c = params.c
-        self.d = params.d
+        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -147,16 +143,4 @@ class Arion:
     # ---------------------------------------------------------------------------
 
     def hash_sponge(self, data: list) -> list:
-        padded_data, was_aligned = pad_zero(data, self.r, self.to_field)
-        IV = [self.F.zero()] * self.c if was_aligned else [self.to_field(len(data))] + [self.F.zero()] * (self.c-1)
-        return hash_sponge(
-            perm=self.permutation,
-            data=padded_data,
-            state_size=self.t,
-            rate=self.r,
-            capacity=self.c,
-            digest_size=self.d,
-            IV=IV,
-            absorb=add_to_start,
-            to_field=self.to_field,
-        )
+        return self.sponge.hash(self.permutation, data)

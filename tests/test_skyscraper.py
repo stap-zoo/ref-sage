@@ -199,7 +199,7 @@ def test_permutation_distinct_inputs(name, params):
 def test_output_sizes(name, params):
     prim = Skyscraper(params)
     assert len(prim.compress([prim.F.random_element() for _ in range(prim.t)])) == prim.n
-    assert len(prim.hash_sponge([prim.F.random_element() for _ in range(prim.r)])) == prim.d
+    assert len(prim.hash_sponge([prim.F.random_element() for _ in range(prim.sponge.r)])) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +256,7 @@ def test_cpolys_derivation_matches_override():
 def test_rcons_reproducible(name, params):
     """Reconstructing the same params reproduces identical round constants and cpolys."""
     twin = SkyscraperParams(p=params.p, si=params.si, fmod=params.fmod, n=params.n,
-                            r=params.r, c=params.c, d=params.d)
+                            r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
     assert twin.rcons == params.rcons
     assert twin.cpolys == params.cpolys
     assert params.rcons[0] == [params.F.zero()] * params.n

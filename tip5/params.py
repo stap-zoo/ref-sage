@@ -2,14 +2,14 @@
 # ---------------------------------------------------------------------------
 # Parameter definition for Tip5 (and its TIP4 / TIP4' variants): the Tip5Params class.
 #
-# Tip5Params is the single source of truth for an instance. It sanitizes the
+# Tip5Params is the single source of truth for an instance. It sanitizes 
 # user-facing parameters and expands them into a fully-specified instance that
 # the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper (or, for r/c/d, by the shared
-# resolve_sponge_params). Settings that depart from the recommended ones
-# raise a ParamRecommendationWarning rather than an error.
+# omits is filled in by the matching _init_* helper. Settings that depart from 
+# the recommended ones raise a ParamRecommendationWarning rather than an error.
 #
-# Tip4Params and Tip4Prime params implement variants detailed here: # https://toposware.com/paper_tip5.pdf
+# Tip4Params and Tip4Prime params implement variants detailed here: 
+# https://toposware.com/paper_tip5.pdf
 # ---------------------------------------------------------------------------
 
 # Structural imports
@@ -23,8 +23,8 @@ from sage.all import GF, Integer
 # Custom imports
 from utils.lut import invert_LUT
 from utils.sampler import XOFFieldElementSampler
+from utils.mode import SpongeCLE
 from utils.matrix import map_nested, invert_matrix, circulant
-from utils.mode import resolve_sponge_params
 from utils.field import GOLDILOCKS
 from marvellous.params import RPO_MDS_ROWS   # Tip4' reuses RPO's circulant MDS
 
@@ -99,7 +99,7 @@ class Tip5Params:
         self.toy = toy
 
         # Sponge parameters
-        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
+        self.sponge = SpongeCLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
 
         # Montgomery constant
         self.mont_R = self.to_field(2**64) # Montgomery constant

@@ -60,7 +60,7 @@ RPO_T16_KATS = [
 # last in the state, whereas the RPO spec has the capacity first and the rate
 # last (capacity and rate exchanged), so hash_sponge does not currently
 # reproduce these vectors.
-@pytest.mark.skip(reason="hash_sponge is rate-first; the RPO spec is capacity-first, so the reference vectors are not reproduced yet")
+#@pytest.mark.skip(reason="hash_sponge is rate-first; the RPO spec is capacity-first, so the reference vectors are not reproduced yet")
 @pytest.mark.parametrize("input_seq,expected", RPO_T12_KATS)
 def test_rpo_t12_kat(input_seq, expected):
     prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
@@ -69,7 +69,7 @@ def test_rpo_t12_kat(input_seq, expected):
     assert [prim.from_field(x) for x in out] == expected
 
 
-@pytest.mark.skip(reason="hash_sponge is rate-first; the RPO spec is capacity-first, so the reference vectors are not reproduced yet")
+#@pytest.mark.skip(reason="hash_sponge is rate-first; the RPO spec is capacity-first, so the reference vectors are not reproduced yet")
 @pytest.mark.parametrize("input_seq,expected", RPO_T16_KATS)
 def test_rpo_t16_kat(input_seq, expected):
     prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T16)
@@ -109,7 +109,7 @@ def test_layer_roundtrip(name, params):
 def test_digest_size(name, params):
     prim = RescuePrimeOptimized(params)
     out = prim.hash_sponge([prim.to_field(0)])
-    assert len(out) == prim.r // 2 == prim.d
+    assert len(out) == prim.sponge.r // 2 == prim.sponge.d
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
@@ -150,4 +150,4 @@ def test_recommended_instance_no_warning(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("error", ParamRecommendationWarning)
         RescuePrimeOptimizedParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
-                                   r=params.r, c=params.c, d=params.d)
+                                   r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)

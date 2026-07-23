@@ -2,11 +2,10 @@
 # ---------------------------------------------------------------------------
 # Parameter definition for GMiMC: the GMiMCParams class.
 #
-# GMiMCParams is the single source of truth for an instance. It sanitizes the
+# GMiMCParams is the single source of truth for an instance. It sanitizes 
 # user-facing parameters and expands them into a fully-specified instance that
-# every other file (permutation, hash modes, instances, tests) consumes. Any
-# value the user omits is filled in by the matching _init_* helper (or, for
-# r/c/d, by the shared resolve_sponge_params). Settings that depart from
+# the permutation, hash modes, instances and tests consume. Any value the user
+# omits is filled in by the matching _init_* helper. Settings that depart from 
 # the recommended ones raise a ParamRecommendationWarning rather than an error.
 # ---------------------------------------------------------------------------
 
@@ -21,7 +20,7 @@ from sage.all import GF, Integer
 # Custom imports
 from utils.matrix import simple_circulant_matrix, map_nested, invert_matrix
 from utils.sampler import XOFFieldElementSampler
-from utils.mode import resolve_sponge_params
+from utils.mode import SpongeLE
 
 
 class GMiMCParams:
@@ -68,7 +67,7 @@ class GMiMCParams:
         self.toy = toy
 
         # Sponge parameters
-        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
+        self.sponge = SpongeLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
 
         # Non-linear layer
         self.alpha = alpha if alpha is not None else self._init_alpha()

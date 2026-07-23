@@ -40,15 +40,15 @@ def vecsub(vec1: list, vec2: list) -> list:
     """Vector-vector addition over any ring. Returns a new list."""
     return [v1 - v2 for v1, v2 in zip(vec1, vec2)]
 
-def add_to_start(state: list, block: list) -> list:
-    """New state with block added element-wise into the first len(block) positions."""
-    assert len(state) >= len(block)
-    return [s + b for s, b in zip(state, block)] + state[len(block):]
+def add_at(state: list, block: list, off: int = 0) -> list:
+    """New state with block added element-wise into positions [off, off+len(block))."""
+    assert off + len(block) <= len(state)
+    return (state[:off] + [state[off + i] + b for i, b in enumerate(block)] + state[off + len(block):])
 
-def replace_start(state: list, block: list) -> list:
-    """New state with the first len(block) positions overwritten by block."""
-    assert len(state) >= len(block)
-    return list(block) + state[len(block):]
+def replace_at(state: list, block: list, off: int = 0) -> list:
+    """New state with positions [off, off+len(block)) overwritten by block."""
+    assert off + len(block) <= len(state)
+    return state[:off] + list(block) + state[off + len(block):]
 
 # ---------------------------------------------------------------------------
 # Generation

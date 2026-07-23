@@ -3,8 +3,7 @@
 # Tip5 (and TIP4 / TIP4'): the permutation (round function) and the hash modes
 # built on it.
 #
-# Constructed from a fully-specified Tip5Params object; this class only *applies*
-# the parameters, never derives or validates them.
+# Constructed from a fully-specified Tip5Params object.
 #
 # NOTE: the split-and-lookup S-box (_sl_sbox / _sl_sbox_inv, used by nonlinear_layer on
 # the first u branches) decomposes a field element into bytes and applies a
@@ -15,9 +14,8 @@
 # ---------------------------------------------------------------------------
 
 from tip5.params import Tip5Params, Tip4Params, Tip4PrimeParams
-from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
+from utils.matrix import matvecmul, vecadd, vecsub
 from utils.lut import mixed_radix_decompose, mixed_radix_compose
-from utils.mode import hash_sponge, pad_fixed_length
 
 
 class Tip5:
@@ -46,9 +44,7 @@ class Tip5:
         self.rcons = params.rcons
 
         # Hash modes
-        self.r = params.r
-        self.c = params.c
-        self.d = params.d
+        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -131,23 +127,11 @@ class Tip5:
     # Hash modes
     # ---------------------------------------------------------------------------
 
-    def hash_sponge(self, data: list, c_value: int =1) -> list:
-        """Fixed-length hash: a single rate-sized block, capacity initialized to c_value."""
-        if len(data) != self.r:
-            raise ValueError(f"Invalid input size. Expected {self.r}, got {len(data)}")
-        padded_data, _ = pad_fixed_length(data, self.r, self.to_field)
-        IV = [self.to_field(c_value)] * self.c
-        return hash_sponge(
-            perm=self.permutation,
-            data=padded_data,
-            state_size=self.t,
-            rate=self.r,
-            capacity=self.c,
-            digest_size=self.d,
-            IV=IV,
-            absorb=add_to_start,
-            to_field=self.to_field,
-        )
+    def hash_sponge(self, data: list) -> list:
+        """Fixed-length hash: a single rate-sized block, capacity initialized to c_val=1."""
+        if len(data) != self.sponge.r:
+            raise ValueError(f"Invalid input size. Expected {self.sponge.r}, got {len(data)}")
+        return self.sponge.hash(self.permutation, data, input_len_fixed=True, c_val=1)
 
 
 # ---------------------------------------------------------------------------

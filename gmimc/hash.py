@@ -6,8 +6,8 @@
 # ---------------------------------------------------------------------------
 
 from gmimc.params import GMiMCParams
-from utils.matrix import matvecmul, vecadd, vecsub, add_to_start
-from utils.mode import hash_sponge, pad_zero, compress_davies_meyer
+from utils.matrix import matvecmul, vecadd, vecsub
+from utils.mode import compress_davies_meyer
 
 
 class GMiMC:
@@ -33,9 +33,7 @@ class GMiMC:
         self.rcons = params.rcons
 
         # Hash modes
-        self.r = params.r
-        self.c = params.c
-        self.d = params.d
+        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -120,16 +118,4 @@ class GMiMC:
         )
 
     def hash_sponge(self, data: list) -> list:
-        padded_data, _ = pad_zero(data, self.r, self.to_field)
-        IV = [self.to_field(len(data))] + [self.F.zero()] * (self.c - 1)
-        return hash_sponge(
-            perm=self.permutation,
-            data=padded_data,
-            state_size=self.t,
-            rate=self.r,
-            capacity=self.c,
-            digest_size=self.d,
-            IV=IV,
-            absorb=add_to_start,
-            to_field=self.to_field,
-        )
+        return self.sponge.hash(self.permutation, data, input_len_fixed=True)

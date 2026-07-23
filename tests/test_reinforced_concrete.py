@@ -133,17 +133,18 @@ def test_permutation_distinct_inputs(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_compress_output_size(name, params):
     prim = ReinforcedConcrete(params)
-    x_m = [prim.F.random_element() for _ in range(prim.d)]
-    x_c = [prim.F.random_element() for _ in range(prim.d)]
-    assert len(prim.compress_2_to_1(x_m, x_c)) == prim.d
+    x_m = [prim.F.random_element() for _ in range(prim.sponge.d)]
+    x_c = [prim.F.random_element() for _ in range(prim.sponge.d)]
+    assert len(prim.hash_2_to_1(x_m, x_c)) == prim.sponge.d
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
     prim = ReinforcedConcrete(params)
-    #data = [prim.F.random_element() for _ in range(prim.r * 3)] # TODO implement variable length sponge or catch exception
-    data = [prim.F.random_element() for _ in range(prim.r)] 
-    assert len(prim.hash_sponge(data)) == prim.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r)] 
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +166,7 @@ def test_rcons_generated_matches_instance(name, params):
     derived = ReinforcedConcreteParams(
         p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
         R_pre=params.R_pre, R_bars=params.R_bars, R_post=params.R_post,
-        si=params.si, M=M, r=params.r, c=params.c, d=params.d)
+        si=params.si, M=M, r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
     assert derived.rcons == params.rcons
 
 
@@ -175,7 +176,7 @@ def test_matrix_derivation_matches_instance(name, params):
     derived = ReinforcedConcreteParams(
         p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
         R_pre=params.R_pre, R_bars=params.R_bars, R_post=params.R_post,
-        si=params.si, r=params.r, c=params.c, d=params.d)  # M omitted -> _init_mat
+        si=params.si, r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # M omitted -> _init_mat
     assert derived.M == params.M
 
 
@@ -185,7 +186,7 @@ def test_rounds_derivation_matches_instance(name, params):
     M, _ = _instance_ints(params)
     derived = ReinforcedConcreteParams(
         p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
-        si=params.si, M=M, r=params.r, c=params.c, d=params.d)  # rounds omitted -> _init_rounds
+        si=params.si, M=M, r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # rounds omitted -> _init_rounds
     assert (derived.R_pre, derived.R_bars, derived.R_post) == (params.R_pre, params.R_bars, params.R_post)
 
 
@@ -216,7 +217,7 @@ def test_recommended_instance_no_warning(name, params):
         ReinforcedConcreteParams(
             p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
             R_pre=params.R_pre, R_bars=params.R_bars, R_post=params.R_post,
-            si=params.si, M=M, r=params.r, c=params.c, d=params.d)
+            si=params.si, M=M, r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
 
 
 def test_constants_reproducible():

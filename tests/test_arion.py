@@ -100,9 +100,10 @@ def test_permutation_distinct_inputs(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
     prim = Arion(params)
-    #data = [prim.F.random_element() for _ in range(prim.r * 3)] # TODO implement variable length sponge or catch exception
-    data = [prim.F.random_element() for _ in range(prim.r)]
-    assert len(prim.hash_sponge(data)) == prim.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r)]
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +125,7 @@ def test_generated_matches_instance(name, params):
     # Rebuilding the params without M / constants must reproduce the pinned instance.
     derived = ArionParams(p=params.p, t=params.t, R=params.R,
                           alpha1=params.alpha1, alpha2=params.alpha2,
-                          r=params.r, c=params.c, d=params.d)
+                          r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
     assert derived.M == params.M
     assert derived.rcons == params.rcons
     assert derived.coeffs_g == params.coeffs_g
@@ -136,7 +137,7 @@ def test_generated_matches_instance(name, params):
 def test_rounds_derivation_matches_instance(name, params):
     derived = ArionParams(p=params.p, t=params.t,
                           alpha1=params.alpha1, alpha2=params.alpha2,
-                          r=params.r, c=params.c, d=params.d)  # R omitted -> _init_rounds
+                          r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # R omitted -> _init_rounds
     assert derived.R == params.R
 
 
@@ -167,7 +168,7 @@ def test_recommended_instance_no_warning(name, params):
         warnings.simplefilter("error", ParamRecommendationWarning)
         ArionParams(p=params.p, t=params.t, R=params.R,
                     alpha1=params.alpha1, alpha2=params.alpha2,
-                    r=params.r, c=params.c, d=params.d)
+                    r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
 
 
 def test_constants_reproducible():

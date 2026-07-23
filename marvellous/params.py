@@ -3,14 +3,11 @@
 # Parameter definitions for the Marvellous family: RescueParams and its
 # subclasses RescuePrimeParams and RescuePrimeOptimizedParams (RPO).
 #
-# Each params class is the single source of truth for an instance: it sanitizes
-# the user-facing parameters and expands them into a fully-specified instance
-# that the permutation, hash modes, instances and tests consume. Any value the
-# user omits is filled in by the matching _init_* helper (or, for r/c/d, by the
-# shared resolve_sponge_params). The subclasses differ only in their
-# _init_* derivations (round number, MDS matrix, round constants); the base
-# constructor and validation are shared. Settings that depart from the
-# recommended ones raise a ParamRecommendationWarning rather than an error.
+# Each params class is the single source of truth for an instance. It sanitizes
+# user-facing parameters and expands them into a fully-specified instance that
+# the permutation, hash modes, instances and tests consume. Any value the user
+# omits is filled in by the matching _init_* helper. Settings that depart from 
+# the recommended ones raise a ParamRecommendationWarning rather than an error.
 # ---------------------------------------------------------------------------
 
 # Structural imports
@@ -25,8 +22,8 @@ from sage.all import GF, Integer, matrix, vector, flatten, PolynomialRing
 # Custom imports
 from utils.matrix import vandermonde_mds_matrix, map_nested, invert_matrix, circulant
 from utils.sampler import XOFFieldElementSampler
+from utils.mode import SpongeRescue, SpongeRPO, Sponge2
 from utils.complexities import gb_comp
-from utils.mode import resolve_sponge_params
 from utils.field import GOLDILOCKS, MERSENNE31
 from utils.poly import poly_to_aos, map_coeffs, univ_from_list, power_map_coordinate_polys, diff_polys_list
 
@@ -58,6 +55,9 @@ XHASH_MDS_M31_T32_ROW = [
 # ---------------------------------------------------------------------------
 
 class RescueParams:
+    LABEL = None
+    SPONGE = SpongeRescue
+
     def __init__(
         self,
         p:         int,
@@ -93,7 +93,7 @@ class RescueParams:
         kappa     : target security level in bits (default 128)
         toy       : if True, recommendation-level checks warn instead of raising (default False)
         """
-
+        
         # Input sanitization
         RescueParams._input_sanitization(SimpleNamespace(**{k: v for k, v in locals().items() if k != "self"}))
 
@@ -105,9 +105,9 @@ class RescueParams:
         self.toy = toy
 
         # Sponge parameters
-        if d is None and r is not None:
+        if d is None and r is not None: # TODO double-check
             d = r // 2  
-        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
+        self.sponge = self.SPONGE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
 
         # Non-linear layer
         self.alpha = alpha if alpha is not None else self._init_alpha()
@@ -237,7 +237,7 @@ class RescueParams:
     def _l1(self) -> int:
         """Instance-specific number of rounds that can be attacked by a Gröbner basis attack"""
         # Following Equation (9) in https://eprint.iacr.org/2019/426.pdf
-        nvar = lambda r: self.t * r + self.d  # number of variables/equations
+        nvar = lambda r: self.t * r + self.sponge.d  # number of variables/equations
         dcon = lambda r: floor(0.5 * (self.alpha - 1) * self.t * r + 2)  # extrapolation for observed solving degree
         R = 1
         while gb_comp(dreg=dcon(R), nv=nvar(R), w=2) < self.kappa:
@@ -259,10 +259,11 @@ class RescuePrimeParams(RescueParams):
         - security margin: reduced from 100% to 50%
     """
     LABEL = "Rescue-XLIX"
+    SPONGE = SpongeRescue
 
     def _l1(self) -> int:
         """Instance-specific number of rounds that can be attacked by a Gröbner basis attack"""
-        nvar = lambda r: self.t * (r - 1) + self.d  # number of variables/equations
+        nvar = lambda r: self.t * (r - 1) + self.sponge.d  # number of variables/equations
         dcon = lambda r: floor(0.5 * (self.alpha - 1) * self.t * (r - 1) + 2)  # extrapolation for observed solving degree
         R = 1
         while gb_comp(dreg=dcon(R), nv=nvar(R), w=2) < self.kappa:
@@ -279,7 +280,7 @@ class RescuePrimeParams(RescueParams):
         return vandermonde_mds_matrix(self.p, self.t, self.g, transpose=True)
 
     def _init_cons(self) -> list[list[int]]:
-        seed = f"{self.LABEL}({self.p},{self.t},{self.c},{self.kappa})".encode("ascii")
+        seed = f"{self.LABEL}({self.p},{self.t},{self.sponge.c},{self.kappa})".encode("ascii")
         return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_256", sampling="mod").grid(2 * self.R, self.t)
 
     def _parameter_sanitization(self):
@@ -307,6 +308,7 @@ class RescuePrimeOptimizedParams(RescuePrimeParams):
         - security margin: similar to RescuePrime, but reduced by one round
     """
     LABEL = "RPO"
+    SPONGE = SpongeRPO
 
     def _init_rounds(self) -> int:
         # _l0 reused from Rescue, _l1 reused from RescuePrime
@@ -330,6 +332,7 @@ class XHashParams(RescuePrimeOptimizedParams):
           (see https://hackmd.io/@sKYgEqCsSZW5mqQfCGUHvA/SkUsv8qAZg) TODO add to matrix derivation strategies
     """
     LABEL = "RPO" # Same label for rcons derivation as for RPO
+    SPONGE = Sponge2
 
     def __init__(
         self, 
@@ -393,7 +396,7 @@ class XHashParams(RescuePrimeOptimizedParams):
     def _init_cons(self) -> list[list[int]]:
         # Same seed scheme as RPO, but generate exactly n_rcons rows (driven by the round
         # structure) rather than the parent's 2*R.
-        seed = f"{self.LABEL}({self.p},{self.t},{self.c},{self.kappa})".encode("ascii")
+        seed = f"{self.LABEL}({self.p},{self.t},{self.sponge.c},{self.kappa})".encode("ascii")
         return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_256", sampling="mod").grid(self.n_rcons, self.t)
 
     def _init_rounds(self) -> int:
@@ -440,5 +443,3 @@ class XHashParams(RescuePrimeOptimizedParams):
             # only fmod was given: use derived cpolys and store the modulus
             self.cpolys = cpolys_derived
             self.fmod = fmod
-                
-

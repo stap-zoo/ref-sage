@@ -2,13 +2,11 @@
 # ---------------------------------------------------------------------------
 # Parameter definition for Griffin: the GriffinParams class.
 #
-# GriffinParams is the single source of truth for an instance. It takes the
-# user-facing parameters and expands them into a fully-specified instance:
-# it sanitizes the inputs and stores/derives every value the permutation and
-# hash modes consume. Any value the user omits is filled in by the matching
-# _init_* helper (or, for r/c/d, by the shared resolve_sponge_params).
-# Settings that depart from the recommended ones raise a
-# ParamRecommendationWarning rather than an error.
+# GriffinParams is the single source of truth for an instance. It sanitizes
+# user-facing parameters and expands them into a fully-specified instance that
+# the permutation, hash modes, instances and tests consume. Any value the user
+# omits is filled in by the matching _init_* helper. Settings that depart from 
+# the recommended ones raise a ParamRecommendationWarning rather than an error.
 # ---------------------------------------------------------------------------
 
 # Structural imports
@@ -22,7 +20,7 @@ from sage.all import GF, Integer, legendre_symbol
 # Custom imports
 from utils.matrix import m4_to_block_circulant_matrix, circulant, map_nested, invert_matrix
 from utils.sampler import XOFFieldElementSampler
-from utils.mode import resolve_sponge_params
+from utils.mode import SpongeLE
 
 # ---------------------------------------------------------------------------
 # Module-level constants
@@ -82,7 +80,7 @@ class GriffinParams:
         self.toy = toy
 
         # Sponge parameters
-        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
+        self.sponge = SpongeLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
 
         # Rounds (set before _init_cons, whose derivation depends on R)
         self.R = R if R is not None else self._init_rounds()

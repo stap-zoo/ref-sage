@@ -149,9 +149,11 @@ def test_permutation_distinct_inputs(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
     prim = pSquareHash(params)
-    #data = [prim.F.random_element() for _ in range(prim.r * 3)]  # TODO implement variable length sponge or catch exception
-    data = [prim.F.random_element() for _ in range(prim.r)] 
-    assert len(prim.hash_sponge(data)) == prim.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r)] 
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)] 
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
+
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +172,7 @@ def test_compress_output_size(name, params):
     half = prim.t // 2
     x1 = [prim.F.random_element() for _ in range(half)]
     x2 = [prim.F.random_element() for _ in range(half)]
-    assert len(prim.compress_2_to_1(x1, x2)) == prim.d
+    assert len(prim.compress_2_to_1(x1, x2)) == prim.sponge.d
 
 
 @pytest.mark.parametrize("name,params", NO_COMPRESS_INSTANCES, ids=[name for name, _ in NO_COMPRESS_INSTANCES])
@@ -197,7 +199,7 @@ def test_matrices_generated_match_instance(name, params):
     # must reproduce them.
     derived = pSquareHashParams(p=params.p, t=params.t, R=params.R,
                                 rcons=_instance_rcons_ints(params),
-                                r=params.r, c=params.c, d=params.d)
+                                r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
     assert derived.M == params.M
     assert derived.M_IO == params.M_IO
 
@@ -206,7 +208,7 @@ def test_matrices_generated_match_instance(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_cons_generated_matches_instance(name, params):
     derived = pSquareHashParams(p=params.p, t=params.t, R=params.R,
-                                r=params.r, c=params.c, d=params.d)  # rcons omitted -> _init_cons
+                                r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # rcons omitted -> _init_cons
     assert derived.rcons == params.rcons
 
 
@@ -215,7 +217,7 @@ def test_cons_generated_matches_instance(name, params):
 def test_rounds_derivation_matches_instance(name, params):
     derived = pSquareHashParams(p=params.p, t=params.t,
                                 rcons=_instance_rcons_ints(params),
-                                r=params.r, c=params.c, d=params.d)  # R omitted -> _init_rounds
+                                r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # R omitted -> _init_rounds
     assert derived.R == params.R
 
 
@@ -234,7 +236,7 @@ def test_recommended_instance_no_warning(name, params):
         warnings.simplefilter("error", ParamRecommendationWarning)
         pSquareHashParams(p=params.p, t=params.t, R=params.R,
                           rcons=_instance_rcons_ints(params),
-                          r=params.r, c=params.c, d=params.d)
+                          r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
 
 
 def test_constants_reproducible():

@@ -469,10 +469,10 @@ def test_permutation_distinct_inputs(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
     prim = Anemoi(params)
-    data = [prim.F.random_element() for _ in range(prim.r * 3)]      # rate-aligned (sigma = 1)
-    assert len(prim.hash_sponge(data)) == prim.d
-    data = [prim.F.random_element() for _ in range(prim.r * 2 + 1)]  # needs padding (sigma = 0)
-    assert len(prim.hash_sponge(data)) == prim.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]      # rate-aligned (sigma = 1)
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    data = [prim.F.random_element() for _ in range(prim.sponge.r * 2 + 1)]  # needs padding (sigma = 0)
+    assert len(prim.hash_sponge(data)) == prim.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -550,4 +550,4 @@ def test_recommended_instance_no_warning(name, params):
         warnings.simplefilter("error", ParamRecommendationWarning)
         AnemoiParams(p=params.p, g=int(params.from_field(params.g)), l=params.l,
                      alpha=params.alpha, R=params.R,
-                     r=params.r, c=params.c, d=params.d)
+                     r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)

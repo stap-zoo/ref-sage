@@ -2,25 +2,14 @@
 # ---------------------------------------------------------------------------
 # Parameter definition for Grendel: the GrendelParams class.
 #
-# Grendel (Szepieniec, https://eprint.iacr.org/2021/984) is a permutation over
-# F_p^t whose S-box is a low-degree power map with a possible sign flip:
-#
-#     f(x) = x^alpha * legendre(x),      legendre(x) = x^((p-1)/2) in {-1, 0, 1}
-#
-# The Legendre symbol is cheap to evaluate (O((log p)^2) field time) yet
-# contributes degree (p-1)/2, so the cipher gets the algebraic strength of a
-# high-degree map at the evaluation cost of a low-degree one.
+# GrendelParams is the single source of truth for an instance. It sanitizes
+# user-facing parameters and expands them into a fully-specified instance that
+# the permutation, hash modes, instances and tests consume. Any value the user
+# omits is filled in by the matching _init_* helper. Settings that depart from 
+# the recommended ones raise a ParamRecommendationWarning rather than an error.
 #
 # Paper-to-framework notation: state size m -> t, number of rounds N -> R,
 # security level lambda -> kappa, round constants {C_i} -> rcons.
-#
-# GrendelParams is the single source of truth for an instance. It takes the
-# user-facing parameters (p, t, r, kappa in the paper's irredundant tuple) and
-# expands them into a fully-specified instance that the permutation, hash
-# modes, instances and tests consume. Any value the user omits is filled in by
-# the matching _init_* helper (or, for r/c/d, by the shared
-# resolve_sponge_params). Settings that depart from the recommended ones
-# raise a ParamRecommendationWarning rather than an error.
 # ---------------------------------------------------------------------------
 
 
@@ -34,8 +23,8 @@ from sage.all import GF, Integer
 
 # Custom imports
 from utils.matrix import map_nested, invert_matrix, vandermonde_mds_matrix
-from utils.mode import resolve_sponge_params
 from utils.sampler import XOFFieldElementSampler
+from utils.mode import SpongePlain
 from utils.complexities import gb_comp2
 
 # ---------------------------------------------------------------------------
@@ -99,7 +88,7 @@ class GrendelParams:
         self.toy = toy
 
         # Sponge parameters
-        self.r, self.c, self.d = resolve_sponge_params(kappa=self.kappa, p=self.p, t=self.t, r=r, c=c, d=d, toy=toy)
+        self.sponge = SpongePlain(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
 
         # Non-linear layer
         # The S-box S(x) = x^alpha * legendre(x) equals the single power map x^e with e = alpha + (p-1)/2.
@@ -169,7 +158,7 @@ class GrendelParams:
         if self._integral_comp() < self.kappa:
             msg = f"TOY VERSION: integral attacks cost only 2^{self._integral_comp():.1f} < 2^{self.kappa}"
             recommend(msg, self.toy)
-        if self.d == 1 and self._rootfinding_comp() < self.kappa:
+        if self.sponge.d == 1 and self._rootfinding_comp() < self.kappa:
             msg = f"TOY VERSION: root-finding attacks cost only 2^{self._rootfinding_comp():.1f} < 2^{self.kappa}"
             recommend(msg, self.toy)
 
@@ -211,12 +200,12 @@ class GrendelParams:
     
     def _rootfinding_comp(self) -> float:
         """log2 of root-finding attack for 1 output. Independent of round number R."""
-        assert(self.d == 1)
+        assert(self.sponge.d == 1)
         return log2(self.p)
 
     def _guessing_legendre_rootfinding_comp(self, R: int) -> float:
         """log2 of the upper bound on any R-round root-finding attack with known Legendre symbols."""
-        return (R * self.t - self.c) + R * log2(self.alpha) + 2 * log2(R)
+        return (R * self.t - self.sponge.c) + R * log2(self.alpha) + 2 * log2(R)
 
     def _linear_comp(self, R: int) -> float:
         """log2 of the upper bound on any R-round linear trail probability."""
@@ -229,7 +218,7 @@ class GrendelParams:
     def _groebner_comp(self, R: int) -> float:
         """log2 of the upper bound on any R-round Groebner-basis attack."""
         # Without known Legendre symbols
-        n = 2*(R * self.t - self.c) # number of variables/equations in the system
+        n = 2*(R * self.t - self.sponge.c) # number of variables/equations in the system
         dreg = (1 + n//2 * (self.alpha + 3)) // 8 # Equation 30/31
         return gb_comp2(dreg=dreg, nv=n, w=2)
 
@@ -238,7 +227,7 @@ class GrendelParams:
         # With known Legendre symbols
         # Approximating the Legendre symbols as uniform random variables across {−1, 1}, 
         # the attacker has to guess O(2^n) times before his guess is correct.
-        n = R * self.t - self.c # number of variables/equations in the system
+        n = R * self.t - self.sponge.c # number of variables/equations in the system
         dreg = (1 + n * (self.alpha - 1)) // 9 # Equation 35/36
         return n + gb_comp2(dreg=dreg, nv=n, w=2) 
 
