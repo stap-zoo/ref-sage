@@ -73,20 +73,21 @@ def test_permutation_kat(name, params, kat):
 
 # Hash-mode KATs: same shape as above, calling hash_sponge (and later compress /
 # compress_2_to_1). Inputs are PLAIN INTEGERS lifted via to_field; the output is
-# d integers (the digest), lowered via from_field. hash_sponge zero-pads to a
-# multiple of the rate, so pick lengths that exercise pad_zero: empty input, a
-# length shorter than the rate, exactly one block, and two full blocks.
+# d integers (the digest), lowered via from_field. SpongePlain uses injective
+# pad10* (pad_simple), so a padding block is ALWAYS appended -- pick lengths that
+# exercise it: empty input, a length shorter than the rate, exactly one block,
+# and two full blocks.
 #
 # As with the permutation KATs these are self-derived: run hash_sponge once on a
 # fixed input and paste the result (and add reference vectors when available).
 SPONGE_KATS = {
     "GOLDILOCKS_T3": [
-        # Self-derived (rate r=2, digest d=1). Inputs chosen to exercise pad_zero.
-        {"input": [],           "output": [0x0]},                 # empty: 0 is rate-aligned, no block absorbed -> squeezes the IV state
-        {"input": [1],          "output": [0x174a530d1f31be30]},  # shorter than the rate (padded to [1, 0])
-        {"input": [0, 1],       "output": [0x1b0b9627bd980125]},  # exactly one block
-        {"input": [0, 1, 2],    "output": [0xbc55c677687fa158]},  # not a multiple of the rate (padded to [0, 1, 2, 0])
-        {"input": [0, 1, 2, 3], "output": [0xfa1bb2eb24b15d56]},  # two full blocks
+        # Self-derived (rate r=2, digest d=1). Inputs chosen to exercise pad10*.
+        {"input": [],           "output": [0x174a530d1f31be30]},  # empty: pad10* still absorbs one padding block
+        {"input": [1],          "output": [0xe49245f3e9844905]},  # shorter than the rate
+        {"input": [0, 1],       "output": [0xd15c3391bab83133]},  # exactly one block (pad10* appends a full block)
+        {"input": [0, 1, 2],    "output": [0xf2876f73cf69018d]},  # not a multiple of the rate
+        {"input": [0, 1, 2, 3], "output": [0x34d444a101405e39]},  # two full blocks
     ],
 }
 

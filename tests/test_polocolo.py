@@ -455,7 +455,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x261aa99dcca8cd792d8bb20b7ab57e0db45f453d81a8c9c98a9ff363a30b7ac,
+                0x3037a0257f3153a60ca43db71f10c05b60627ea1b2e6cbd2bdd7492dfe78f9c1,
             ]},
             {"input": [1, 2],
              "output": [
@@ -481,7 +481,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x5df5ed0a50be7442da2c039bd219b651d2cc8c3a5b12e73340b0a36a552e5a32,
+                0x3d52bf32e7659fbf115dbe0b9fda87eafbd660a9ab707483549123ec6dd2b363,
             ]},
             {"input": [1, 2],
              "output": [
@@ -509,7 +509,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x42f2f5fd21a8456f3cd28498bf3ff946585c7e00d8f4836b753326d9062e30fe,
+                0x4fd037f8cec88ee947fbceb0b64d154e0bfa31aeff610a62d12124b30bc31029,
             ]},
             {"input": [1, 2, 3],
              "output": [
@@ -537,7 +537,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x49091b8da20713d0884ddc71c9db3181a9e5667918721cf954eedf862270c5df,
+                0x2810f2c9016cce42a56039c1e8596dbb8b7ccb6083249c64343929f66f138a44,
             ]},
             {"input": [1, 2, 3],
              "output": [
@@ -567,7 +567,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x6701d2315e46c5c9afa4dff8a2508a91c86ebd75ea430e5b3a9634fbf840c752,
+                0x19bb5e39c9749e1e3ec24b7393ddf24a6bfdf871b9a584ed4ab0e42eac63ea22,
             ]},
             {"input": [1, 2, 3, 4],
              "output": [
@@ -599,7 +599,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x68c9b49a1eb425b3105c3016293289db6ab5a00aa862296bbeb196efe39cffcf,
+                0x1c467481aea74b5973586677dcc75d140937372af7e49484b9bf60019b913953,
             ]},
             {"input": [1, 2, 3, 4, 5],
              "output": [
@@ -631,7 +631,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x39199735fcba7feb7b5fadc9cdcb6ce59e8c7fe81cc117a567162403ccd91282,
+                0x4e1899550c5bfaf42fadca42490a24bfa6037933cd24448f1f60295e771d2cc7,
             ]},
             {"input": [1, 2, 3, 4, 5],
              "output": [
@@ -665,7 +665,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x15d4bf1aa539f83e50b1018dcb0dbb898bcefb3c9e0f3d4c731a02521f39de36,
+                0x62c860b2118f9bcb20ca4d3c5108f6613a8e41c559dbe8fff1d8b7bcdbac710a,
             ]},
             {"input": [1, 2, 3, 4, 5, 6],
              "output": [
@@ -701,7 +701,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x1c9737536eb47bd63aac68d86bd9f9f9136ee3c9cf8b62e9f9a94fb4e33b845,
+                0x42e4901e01eb54662996ccce925b5c37e8c2d9eef5ad06d273e974af4c8e5c73,
             ]},
             {"input": [1, 2, 3, 4, 5, 6, 7],
              "output": [
@@ -737,7 +737,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x3f7e32209cc46a896d3a826a36405ede81389af455dab5262461de5b1a798101,
+                0x41cd5702c2a2d73aed7a365ea000f0b39d536c2dce9dfa9f7cb83bd2f59d42ef,
             ]},
             {"input": [1, 2, 3, 4, 5, 6, 7],
              "output": [
@@ -763,7 +763,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x1243498fdeac2dd77eabd460e9c6f1c1953500dfd2f1a3a57c549a505c46c2b0,
+                0x34dd494bd7d8de367c67b52cb06a69c01e28cf72222b7c163510d834e40254c,
             ]},
             {"input": [1, 2],
              "output": [
@@ -789,7 +789,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x382d9aa9b35fc849f67f368f4de30622e15c1acb189d5fb10cf7395c57824b7,
+                0x2f84bb723b6ad94335cf60b69aaa06efc6ce59085242af30fe8ca82ded679130,
             ]},
             {"input": [1, 2],
              "output": [
@@ -817,7 +817,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x1f578e63cf9411cd88843bad96816244a07f8514fe0b0fc752fb0af05436b24d,
+                0x19091b7e190b5fbff681d093e5d2c446af86cdb63b7ff332708672d25da3557d,
             ]},
             {"input": [1, 2, 3],
              "output": [
@@ -845,7 +845,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x2f18debb69d08a3e32ea94919ed980725fdccd8e1f16111c9e3a365bcbe02e71,
+                0x2e5c456b6805cb8599e1dbc65a981e343084ecd8dba381db3334478eb74bfccd,
             ]},
             {"input": [1, 2, 3],
              "output": [
@@ -875,7 +875,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x801a36e336f7ba7058e6625cde6783e747f2900d504bfe2a5825eafff30ac76,
+                0x25f406a1afaeed25c0a45d76eea2729b2b895416ad706e80c8f24dbda1eae8e4,
             ]},
             {"input": [1, 2, 3, 4],
              "output": [
@@ -907,7 +907,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x3e6d9368432147bfb18eeff0699cec71cdd32814226a2780f817ce2063bd94c,
+                0x2211be2e5fa6b700bf2a950ccd5389077f9403b91a10b7d9c18d3eb8636f9008,
             ]},
             {"input": [1, 2, 3, 4, 5],
              "output": [
@@ -939,7 +939,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0xe3df62ebe27d3e58b920f4df455c43995897ec2cfe48b7f7897e46b72edb9b5,
+                0x1c246e35e51359d89ff00be86bafd76dc49390831939c346ae637da196dee062,
             ]},
             {"input": [1, 2, 3, 4, 5],
              "output": [
@@ -973,7 +973,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x4011af05b793d9cb23ecb412c2fb68dd659076f38c0ff1a0cd2b69048d2b909,
+                0x2e430f4d48f72b798b9d39036baf4ca226335cb26cf260a890e186cbcefb2694,
             ]},
             {"input": [1, 2, 3, 4, 5, 6],
              "output": [
@@ -1009,7 +1009,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x2121cd027965e0b641b49745ee20d7f1a82cea6d43b44885c5b312e6645b73e9,
+                0x6bc174d311402fd97320f58d04e5624b4fa8b042172b36c0b7aff9f6a919582,
             ]},
             {"input": [1, 2, 3, 4, 5, 6, 7],
              "output": [
@@ -1045,7 +1045,7 @@ SELF_KATS = {
         "sponge": [
             {"input": [1],
              "output": [
-                0x1731db1e18f7b74fbec843ac9317590a41b68a1ae0109077fe81f5d421983f62,
+                0x1a85adb7f62aa0f3600a7c910eda64ff5e6111c98640d95944d5870ecbccb6a3,
             ]},
             {"input": [1, 2, 3, 4, 5, 6, 7],
              "output": [
