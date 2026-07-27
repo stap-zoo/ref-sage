@@ -14,7 +14,7 @@ from recommendations import recommend
 from types import SimpleNamespace
 
 # Math specific imports
-from math import gcd
+from math import gcd, ceil, log2
 from sage.all import GF, Integer, legendre_symbol
 
 # Custom imports
@@ -156,13 +156,6 @@ class GriffinParams:
     # Derivation helpers (defaults for the optional parameters)
     # ---------------------------------------------------------------------------
 
-    def _init_rounds(self) -> int:
-        """Derive the round number from the target security level kappa.
-        TODO: implement the round-number criterion of the Griffin paper
-        (https://eprint.iacr.org/2022/403, Section 5: Groebner basis bound with
-        a 20% security margin); until then R must be passed explicitly."""
-        raise NotImplementedError("Error: Not implemented -- round number derivation for Griffin")
-
     def _init_alpha_inv(self) -> int:
         return pow(self.alpha, -1, self.p - 1)
 
@@ -207,3 +200,46 @@ class GriffinParams:
             coeffs.append([a_i, b_i])
 
         return rcons, coeffs
+
+    # ---------------------------------------------------------------------------
+    # Security analysis helpers (Section 5.2 & Section 6)
+    # ---------------------------------------------------------------------------
+
+    def _differential_comp(self, R: int) -> float:
+        """log2 of the upper bound on any R-round differential trail probability."""
+        return (R/2.5) * log2(self.p / (self.alpha - 1))
+    
+    def _groebner_intermediate_comp(self, R: int) -> float:
+        """log2 of the upper bound on R-round Groebner-basis attack (F4). 
+        Intermediate variables, see Equation 8 of https://eprint.iacr.org/2022/403.pdf"""
+        n = 1 + self.t * R  # number of variables/equations in the system
+        dreg = self.alpha * R  # estimated lower bound on dreg
+        return gb_comp(dreg=dreg, nv=n, w=2) 
+
+    def _groebner_partial_intermediate_comp(self, R: int) -> float:
+        """log2 of the upper bound on R-round Groebner-basis attack (F4). 
+        Partial intermediate variables, see Equation 9 of https://eprint.iacr.org/2022/403.pdf"""
+        n = 1 + R  # number of variables/equations in the system
+        dreg = self.alpha ** R  # estimated lower bound on dreg
+        return gb_comp(dreg=dreg, nv=n, w=2) 
+
+    def _init_rounds(self) -> int:
+        """Derive the round number from the target security level kappa.
+        Round-number criterion of the Griffin paper (https://eprint.iacr.org/2022/403, 
+        Section 5.2: Groebner basis bound with a 20% security margin)"""
+
+        target = self.kappa
+        
+        gb_attacks = [self._groebner_intermediate_comp, self._groebner_partial_intermediate_comp]
+        for R_gb in range(1, 10_000):
+            complexities = [attack(R) for attack in gb_attacks]
+            if min(complexities) >= target:
+                break
+        R_gb += 1
+
+        # Round numbers for differential attacks (_differential_comp) expliclty stated in paper (page 21)
+        # Not present in first version (https://eprint.iacr.org/archive/2022/403/1648711416.pdf),
+        # but in published version (https://link.springer.com/chapter/10.1007/978-3-031-38548-3_19)
+        R_diff = ceil(2.5 * target / (log2(p) - log2(self.alpha - 1)))
+
+        return ceil(1.2 * max(6, R_diff, 1 + R_gb)) # 20% security margin

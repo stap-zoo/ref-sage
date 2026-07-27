@@ -157,13 +157,6 @@ class ArionParams:
     # Derivation helpers (defaults for the optional parameters)
     # ---------------------------------------------------------------------------
 
-    def _init_rounds(self) -> int:
-        """Derive the round number from the target security level kappa.
-        TODO: implement the round-number criterion of the Arion paper
-        (https://eprint.iacr.org/2023/588, Section 5: Groebner basis and
-        interpolation bounds); until then R must be passed explicitly."""
-        raise NotImplementedError("Error: Not implemented -- round number derivation for Arion")
-
     def _init_alpha1(self) -> int:
         alpha1 = 2
         while gcd(alpha1, self.p - 1) != 1:
@@ -217,3 +210,13 @@ class ArionParams:
         w = self.t - 1
         coeffs_g = [coeffs_g[r * w:(r + 1) * w] for r in range(self.R)]
         return coeffs_g, coeffs_h, rcons
+
+    # ---------------------------------------------------------------------------
+    # Security analysis helpers (Section 5.2 & Section 6)
+    # ---------------------------------------------------------------------------
+
+    def _init_rounds(self) -> int:
+        """Derive the round number from the target security level kappa.
+        TODO: implement the round-number criterion of the Arion paper
+        (https://eprint.iacr.org/2023/588); until then R must be passed explicitly."""
+        raise NotImplementedError("Error: Not implemented -- round number derivation for Arion")
