@@ -21,6 +21,7 @@ from sage.all import GF, Integer, legendre_symbol
 from utils.matrix import m4_to_block_circulant_matrix, circulant, map_nested, invert_matrix
 from utils.sampler import XOFFieldElementSampler
 from utils.mode import SpongeLE
+from utils.complexities import gb_comp
 
 # ---------------------------------------------------------------------------
 # Module-level constants
@@ -82,12 +83,13 @@ class GriffinParams:
         # Sponge parameters
         self.sponge = SpongeLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
 
-        # Rounds (set before _init_cons, whose derivation depends on R)
-        self.R = R if R is not None else self._init_rounds()
-
         # Non-linear layer
         self.alpha = alpha
         self.alpha_inv = alpha_inv if alpha_inv is not None else self._init_alpha_inv()
+
+        # Rounds (set before _init_cons, whose derivation depends on R)
+        self.R = R if R is not None else self._init_rounds()
+
         # rcons and coeffs_G share one SHAKE128 stream, so they are derived together.
         if rcons is None or coeffs_G is None:
             _rcons, _coeffs_G = self._init_cons()
@@ -130,7 +132,7 @@ class GriffinParams:
             raise NotImplementedError("Characteristic 2 not implemented")
         if not (params.t == 3 or params.t % 4 == 0):
             raise ValueError(f"state size t must be 3 or a multiple of 4. Got {params.t}")
-        if params.alpha not in (3, 5, 7):
+        if params.alpha not in (3, 5, 7, 11):
             raise ValueError(f"alpha must be 3, 5, or 7. Got {params.alpha}")
         if gcd(params.alpha, params.p - 1) != 1:
             raise ValueError("power map does not define a permutation (gcd(alpha, p-1) != 1)")
@@ -232,7 +234,7 @@ class GriffinParams:
         
         gb_attacks = [self._groebner_intermediate_comp, self._groebner_partial_intermediate_comp]
         for R_gb in range(1, 10_000):
-            complexities = [attack(R) for attack in gb_attacks]
+            complexities = [attack(R_gb) for attack in gb_attacks]
             if min(complexities) >= target:
                 break
         R_gb += 1
@@ -240,6 +242,6 @@ class GriffinParams:
         # Round numbers for differential attacks (_differential_comp) expliclty stated in paper (page 21)
         # Not present in first version (https://eprint.iacr.org/archive/2022/403/1648711416.pdf),
         # but in published version (https://link.springer.com/chapter/10.1007/978-3-031-38548-3_19)
-        R_diff = ceil(2.5 * target / (log2(p) - log2(self.alpha - 1)))
+        R_diff = ceil(2.5 * target / (log2(self.p) - log2(self.alpha - 1)))
 
         return ceil(1.2 * max(6, R_diff, 1 + R_gb)) # 20% security margin

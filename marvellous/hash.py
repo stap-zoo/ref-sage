@@ -56,11 +56,11 @@ class Rescue:
         return matvecmul(self.M_inv, state)
 
     def nonlinear_layer(self, state: list, r: int) -> list:
-        # In all Rescue papers, the forward S-box is called pi_0: x -> x^alpha
+        # x -> x^alpha, called pi_1 in Rescue paper, pi_0 in XHash paper
         return [x ** self.alpha for x in state] 
 
     def nonlinear_layer_inv(self, state: list, r: int) -> list:
-        # In all Rescue papers, the backward S-box is called pi_1: x -> x^(1/alpha)
+        # x -> x^(1/alpha), called pi_0 in Rescue paper, pi_1 in XHash paper
         return [x ** self.alpha_inv for x in state]
 
     # ---------------------------------------------------------------------------
