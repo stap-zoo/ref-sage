@@ -14,9 +14,14 @@ import warnings
 
 import pytest
 
+from math import isqrt
+
+from sage.all import GF
+
 from anemoi.hash import Anemoi
-from anemoi.params import AnemoiParams
-from utils.field import GOLDILOCKS
+from anemoi.params import AnemoiParams, CIRCULANT_MDS_ROWS
+from utils.matrix import circulant, circulant_mds_matrix, is_mds
+from utils.field import GOLDILOCKS, BLS12_381_SCALAR
 from recommendations import ParamRecommendationWarning
 from anemoi.instances import (
     ANEMOI_BLS12_381_BASE_T2,
@@ -551,3 +556,46 @@ def test_recommended_instance_no_warning(name, params):
         AnemoiParams(p=params.p, g=int(params.from_field(params.g)), l=params.l,
                      alpha=params.alpha, R=params.R,
                      r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+
+
+# ---------------------------------------------------------------------------
+# 4.6 Circulant MDS matrix generation (l > 4)
+# ---------------------------------------------------------------------------
+
+# Above this l the circulant search costs minutes-to-hours; those pins were generated
+# by circulant_mds_matrix() offline and are verified in CI only for the MDS property
+# (test_circulant_rows_are_mds), not by re-running the full search here.
+REGEN_MAX_L = 9
+
+@pytest.mark.parametrize("l", sorted(CIRCULANT_MDS_ROWS), ids=lambda l: f"l{l}")
+def test_circulant_rows_reproducible(l):
+    # The pinned rows must be exactly what the search regenerates: the first row of the
+    # first MDS circulant in the reference's search order. Ties the CIRCULANT_MDS_ROWS
+    # cache to circulant_mds_matrix() so the constants can never silently drift.
+    if l > REGEN_MAX_L:
+        pytest.skip(f"l={l}: circulant_mds_matrix() search too slow for CI; pinned row verified offline")
+    assert circulant_mds_matrix(l)[0] == CIRCULANT_MDS_ROWS[l]
+
+
+@pytest.mark.parametrize("l", sorted(CIRCULANT_MDS_ROWS), ids=lambda l: f"l{l}")
+def test_circulant_rows_are_mds(l):
+    # Entries are small integers, so we check minors over ZZ (fast) and use a Hadamard
+    # bound to confirm ZZ-MDS implies GF(p)-MDS over the large prime fields (the same
+    # argument Polocolo uses for its pinned matrices). See tests/test_polocolo.py.
+    M = circulant(CIRCULANT_MDS_ROWS[l])
+    assert is_mds(M)                                        # minors over ZZ
+    minor_bound = 1
+    for row in M:
+        minor_bound *= isqrt(sum(x * x for x in row)) + 1
+    assert minor_bound < BLS12_381_SCALAR.p                 # ZZ-MDS => GF(p)-MDS for 255-bit fields
+    if minor_bound < GOLDILOCKS.p:                          # 64-bit field: only the small l qualify
+        assert is_mds(M, GF(GOLDILOCKS.p))
+
+
+@pytest.mark.parametrize("l", [11, 12], ids=lambda l: f"l{l}")
+def test_init_mat_supports_large_l(l):
+    # l > 10 used to raise NotImplementedError; _init_mat must now build a valid l x l
+    # MDS matrix (from the pinned rows or a live search) over a 255-bit field.
+    params = AnemoiParams(p=BLS12_381_SCALAR.p, l=l, R=1, r=l, c=l, d=l)
+    assert len(params.Mx) == l and all(len(row) == l for row in params.Mx)
+    assert is_mds(params.Mx, params.F)

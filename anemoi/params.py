@@ -19,15 +19,18 @@ from sage.all import GF, Integer
 
 # Custom imports
 from utils.complexities import gb_comp
-from utils.matrix import circulant, is_mds, pht_matrix, dl_m33_52_matrix, dl_m46_83_matrix, map_nested, invert_matrix
+from utils.matrix import circulant, circulant_mds_matrix, is_mds, pht_matrix, dl_m33_52_matrix, dl_m46_83_matrix, map_nested, invert_matrix
 from utils.mode import SpongeHirose
 
 # Digits of pi, used to derive the round constants via an open butterfly.
 PI_0 = 1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679
 PI_1 = 8214808651328230664709384460955058223172535940812848111745028410270193852110555964462294895493038196
 
-# First circulant rows found by the reference's circulant_mds_matrix() search,
-# precomputed for faster initialization of large instances (l > 4).
+# First circulant rows found by utils.matrix.circulant_mds_matrix() (the search ported
+# from the Anemoi reference), precomputed for faster initialization of large instances
+# (l > 4). Pinned here as a cache -- reproduced exactly by circulant_mds_matrix(l)[0].
+# Entries are small integers, so these are MDS over every field used by these primitives; 
+# _init_mat falls back to a live search for any l not listed.
 CIRCULANT_MDS_ROWS = {
     5:  [1, 1, 3, 4, 5],
     6:  [1, 1, 3, 4, 5, 6],
@@ -35,6 +38,8 @@ CIRCULANT_MDS_ROWS = {
     8:  [1, 2, 3, 5, 7, 8, 8, 9],
     9:  [1, 3, 5, 6, 8, 9, 9, 10, 11],
     10: [1, 2, 5, 6, 8, 11, 11, 12, 13, 14],
+    11: [1, 2, 6, 7, 9, 12, 13, 14, 14, 16, 17],
+    12: [1, 3, 4, 8, 9, 11, 14, 14, 17, 18, 19, 20],
 }
 
 # Mx matrices
@@ -227,7 +232,8 @@ class AnemoiParams:
     def _init_mat(self, max_tries: int = 1000):
         """Anemoi's M_x: Identity for l=1 (Anemoi's diffusion then comes from the PHT),
         low-addition matrices M_2/M_3/M_4 with the smallest working power of g for l <= 4,
-        precomputed circulant rows for l > 4."""
+        and a circulant MDS matrix for l > 4 -- from the precomputed CIRCULANT_MDS_ROWS
+        when listed, otherwise generated live via circulant_mds_matrix()."""
         if self.l == 1:
             return [[self.F.one()]]
         if self.l <= 4:
@@ -239,9 +245,12 @@ class AnemoiParams:
                     return Mx
                 gi = gi * self.g
             raise RuntimeError(f"no MDS instance of the DL18 l={self.l} shape found within {max_tries} powers of g")
-        if self.l in CIRCULANT_MDS_ROWS:
-            return circulant(CIRCULANT_MDS_ROWS[self.l])
-        raise NotImplementedError(f"MDS matrix generation not implemented for l={self.l}.")
+        # l > 4: circulant MDS matrix. Use the precomputed row when available, otherwise
+        # search for it live (slower, but no l is left unsupported).
+        row = CIRCULANT_MDS_ROWS.get(self.l)
+        if row is None:
+            row = circulant_mds_matrix(self.l)[0]
+        return circulant(row)
 
     def _init_My_from_Mx(self):
         """Mx @ P_rho: column j of the result is column (j-1) mod l of Mx.

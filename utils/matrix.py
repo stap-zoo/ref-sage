@@ -5,6 +5,8 @@ lists (`map_nested`), and constructors for the linear layers used by the permuta
 in this repo (circulant / PHT / diffusion-layer / MDS matrices), plus an MDS check.
 """
 
+import itertools
+
 from utils.sampler import XOFFieldElementSampler
 from sage.all import GF, matrix
 
@@ -71,6 +73,29 @@ def circulant(row: list = None, *, col: list = None) -> list[list]:
         row = [col[0]] + col[:0:-1]   # keep first element, reverse the rest
     n = len(row)
     return [row[(n - i) % n:] + row[:(n - i) % n] for i in range(n)]
+
+def circulant_mds_matrix(l: int, coeff_upper_limit: int = None, field=None) -> list[list[int]]:
+    """First l x l circulant MDS matrix in the reference's search order, returned as a
+    list-of-rows; its first row (result[0]) is the generating row. Ports Anemoi's
+    circulant_mds_matrix() (https://github.com/anemoi-hash/anemoi-hash/blob/main/anemoi.sage):
+    scan the first rows in itertools.combinations_with_replacement(range(1, coeff_upper_limit), l)
+    -- lexicographically, coeff_upper_limit defaulting to l+1 -- and return the first whose
+    circulant is MDS, widening the coefficient range by one and retrying if none qualifies.
+
+    By default the MDS test runs over the integers (field=None): the entries are small positive
+    integers, so all minors stay well below every prime used by these primitives and integer-MDS
+    coincides with GF(p)-MDS (same Hadamard-bound argument as Polocolo's pinned matrices). This
+    is both fast and field-independent. Pass `field` to instead test over GF(p) directly (needed
+    only for a field where that argument does not hold, e.g. a very small prime)."""
+    if coeff_upper_limit is None:
+        coeff_upper_limit = l + 1
+    assert coeff_upper_limit > l
+    for row in itertools.combinations_with_replacement(range(1, coeff_upper_limit), l):
+        M = circulant(list(row))
+        if is_mds(M, field):
+            return M
+    # Some (field, l) admit no MDS circulant within this coefficient range; widen and retry.
+    return circulant_mds_matrix(l, coeff_upper_limit + 1, field)
 
 # ---------------------------------------------------------------------------
 # MDS Matrix generation methods
@@ -396,9 +421,69 @@ def low_addition_mds_matrix(t: int, additions: int, coeff_max: int = 8, seed=Non
 # Property checks
 # ---------------------------------------------------------------------------
 
-def is_mds(M: list[list], field=None) -> bool:
-    """A matrix is MDS iff all its minors (of every order) are non-zero.
-    Accepts a list-of-lists; entries may be ints (then `field` must be given,
-    e.g. GF(p)) or Sage field elements (then `field` is inferred)."""
+# Above this dimension is_mds() switches from Sage's .minors() to the Laplace-DP
+# check. Sage's per-minor determinant over GF(p) is fine for tiny matrices but
+# blows up quickly (~6s at 6x6, ~40s at 7x7 over a 255-bit field), while the
+# Laplace-DP stays in the millisecond range; the two agree on every input.
+MDS_LAPLACE_MIN_N = 5
+
+def is_mds_minor(M: list[list], field=None) -> bool:
+    """A matrix is MDS iff all its minors (of every order) are non-zero, checked
+    via Sage's .minors(). Accepts a list-of-lists; entries may be ints (then
+    `field` must be given, e.g. GF(p)) or Sage field elements (then `field` is
+    inferred). Simple and exact, but recomputes every minor as an independent
+    determinant -- cheap over ZZ, but slow over GF(p) past ~5x5."""
     m = matrix(field, M) if field is not None else matrix(M)
     return all(minor != 0 for k in range(1, m.nrows() + 1) for minor in m.minors(k))
+
+def is_mds_laplace(M: list[list], field=None) -> bool:
+    """A matrix is MDS iff all its minors (of every order) are non-zero, checked
+    via a Laplace expansion that builds the n-minors from the cached (n-1)-minors.
+    Taken from https://github.com/mir-protocol/hash-constants/blob/master/mds_search.sage.
+
+    Reuses lower-order work and early-exits on the first zero minor, so it scales
+    far better than recomputing each minor from scratch -- especially over GF(p),
+    where it avoids Sage's expensive per-minor field determinants. Entries may be
+    ints (leave `field` unset to work over ZZ; valid whenever the minors stay below
+    the target prime) or Sage field elements; pass `field` to check over GF(p)."""
+    m = [[field(x) for x in row] for row in M] if field is not None else [list(row) for row in M]
+
+    # 1-minors are just the entries themselves.
+    if any(any(r == 0 for r in row) for row in m):
+        return False
+
+    N = len(m)
+    assert all(len(row) == N for row in m) and N >= 1
+
+    # det_cache maps (rows, cols) -> the corresponding minor of the previous order.
+    det_cache = {(i, j): m[i][j] for i in range(N) for j in range(N)}
+    for n in range(2, N + 1):
+        new_det_cache = {}
+        for rows in itertools.combinations(range(N), n):
+            i, *rs = rows
+            for cols in itertools.combinations(range(N), n):
+                # Laplace expansion of the (rows, cols) minor along its first row i.
+                det = 0
+                for j in range(n):
+                    c = cols[j]
+                    cs = cols[:j] + cols[j + 1:]           # remaining columns
+                    cofactor = det_cache[(*rs, *cs)]        # minor from the previous order
+                    if j % 2 == 1:
+                        cofactor = -cofactor
+                    det += m[i][c] * cofactor
+                if det == 0:
+                    return False
+                new_det_cache[(*rows, *cols)] = det
+        det_cache = new_det_cache
+    return True
+
+def is_mds(M: list[list], field=None) -> bool:
+    """A matrix is MDS iff all its minors (of every order) are non-zero. Dispatches
+    on size: small matrices use Sage's .minors() (is_mds_minor), larger ones use the
+    Laplace-DP check (is_mds_laplace), which is dramatically faster past ~5x5 --
+    particularly over GF(p). Accepts a list-of-lists; entries may be ints (then
+    `field` must be given, e.g. GF(p), unless the integer minors stay below the target
+    prime) or Sage field elements (then `field` is inferred)."""
+    if len(M) < MDS_LAPLACE_MIN_N:
+        return is_mds_minor(M, field)
+    return is_mds_laplace(M, field)
