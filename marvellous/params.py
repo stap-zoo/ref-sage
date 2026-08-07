@@ -406,7 +406,8 @@ class XHashParams(RescuePrimeOptimizedParams):
 
     def _init_sbox_P3(self, cpolys: list, fmod: list):
         if fmod is None and cpolys is None:
-            raise ValueError("must supply either fmod or cpolys")
+            R = PolynomialRing(self.F, 'x')
+            fmod = R.irreducible_element(n=3, algorithm='first_lexicographic')
 
         # Derive cpolys from fmod, if given
         cpolys_derived = None
