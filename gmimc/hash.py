@@ -5,7 +5,7 @@
 # Constructed from a fully-specified GMiMCParams object.
 # ---------------------------------------------------------------------------
 
-from gmimc.params import GMiMCParams
+from gmimc.params import GMiMCParams, GMiMC2Params
 from utils.matrix import matvecmul, vecadd, vecsub
 from utils.mode import compress_davies_meyer
 
@@ -119,3 +119,67 @@ class GMiMC:
 
     def hash_sponge(self, data: list) -> list:
         return self.sponge.hash(self.permutation, data, input_len_fixed=True)
+
+class GMiMC2(GMiMC):
+    # ---------------------------------------------------------------------------
+    # Initialization
+    # ---------------------------------------------------------------------------
+
+    def __init__(self, params: GMiMC2Params):
+        super().__init__(params)
+        self.F = params.F
+        self.to_field = params.to_field
+        self.from_field = params.from_field
+        self.t = params.t
+        self.alpha = params.alpha
+
+        # Rounds
+        self.R = params.R
+
+        # Linear layers
+        self.M = params.M
+        self.M_inv = params.M_inv
+        self.M_IO = params.M_IO
+        self.M_IO_inv = params.M_IO_inv
+
+        # Constants
+        self.rcons = params.rcons
+
+        # Hash modes
+        self.sponge = params.sponge
+
+    # ---------------------------------------------------------------------------
+    # Modified component functions
+    # ---------------------------------------------------------------------------
+    def nonlinear_layer(self, x_in: list, r: int) -> list:
+        x_out = x_in.copy()
+        x_out[0] += self.rcons[r]
+        x_0_pow = x_out[0]**self.alpha
+        for i in range(1, self.t):
+            x_out[i] += x_0_pow
+        return x_out
+    
+    def nonlinear_layer_inv(self, x_in: list, r: int) -> list:
+        x_out = x_in.copy()
+        x_0_pow = x_out[0]**self.alpha
+        x_out[0] -= self.rcons[r]
+        for i in range(1, self.t):
+            x_out[i] -= x_0_pow
+        return x_out
+    
+    # ---------------------------------------------------------------------------
+    # Modified pre-/post-round steps
+    # ---------------------------------------------------------------------------
+
+    def _pre_rounds(self, state: list) -> list:
+        return matvecmul(self.M_IO, state)
+
+    def _pre_rounds_inv(self, state: list) -> list:
+        return matvecmul(self.M_IO_inv, state)
+
+    def _post_rounds(self, state: list) -> list:
+        return matvecmul(self.M_IO, state)
+
+    def _post_rounds_inv(self, state: list) -> list:
+        return matvecmul(self.M_IO_inv, state)
+    
