@@ -447,12 +447,46 @@ Each primitive lives in its own folder and follows a common layout:
       <td>sponge, Davies–Meyer 2-to-1</td>
     </tr>
     <tr>
-      <td rowspan="1"><a href="https://eprint.iacr.org/2019/397">GMiMC</a></td>
-      <td><code>GMIMC_BN254_T3</code> / <code>GMIMC_BLS12_T3</code></td>
+      <td rowspan="3"><a href="https://eprint.iacr.org/2019/397">GMiMC</a></td>
+      <td><code>GMIMC_BN254_T3/T4</code> / <code>GMIMC_BLS12_T3/T4</code></td>
       <td>BN254 (254 bit) / BLS12-381 (255 bit)</td>
-      <td>3</td>
-      <td>228</td>
+      <td>3 / 4</td>
+      <td>228 / 231</td>
       <td>sponge</td>
+      <tr>
+      <td><code>GMIMC_GOLDILOCKS_T8/T12</code>
+      <td>Goldilocks (64 bit)</td>
+      <td>8 / 12</td>
+      <td>68 / 93</td>
+      <td>sponge</td>
+      </tr>
+      <td><code>GMIMC_MERSENNE_T12/T24</code>
+      <td>Mersenne 31 (31 bits)</td>
+      <td>16 / 24</td>
+      <td>158 / 335</td>
+      <td>sponge</td>
+      </tr>
+    </tr>
+    <tr>
+      <td rowspan="3">GMiMCHash2</td>
+      <td><code>GMIMC2_BN254_T4</code> / <code>GMIMC2_BLS12T4</code></td>
+      <td>BN254 (254 bit) / BLS12-381 (255 bit)</td>
+      <td>4</td>
+      <td>64</td>
+      <td>sponge</td>
+      <tr>
+      <td><code>GMIMC2_GOLDILOCKS_T8/T12</code>
+      <td>Goldilocks (64 bit)</td>
+      <td>8 / 12</td>
+      <td>88 / 96</td>
+      <td>(2-to-1 compression), sponge</td>
+      </tr>
+      <td><code>GMIMC2_MERSENNE_T12/T24</code>
+      <td>Mersenne 31 (31 bits)</td>
+      <td>16 / 24</td>
+      <td>176 / 264</td>
+      <td>(2-to-1 compression), sponge</td>
+      </tr>
     </tr>
     <tr>
       <td rowspan="1"><a href="https://eprint.iacr.org/2021/984">Grendel</a></td>

@@ -1,6 +1,7 @@
 # params.py
 # ---------------------------------------------------------------------------
-# Parameter definition for GMiMC: the GMiMCParams class.
+# Parameter definition for GMiMC: the GMiMCParams class and its subclass
+# GMiMC2Params.
 #
 # GMiMCParams is the single source of truth for an instance. It sanitizes 
 # user-facing parameters and expands them into a fully-specified instance that
@@ -155,6 +156,140 @@ class GMiMCParams:
         # Deterministic constant generation via SHAKE256, so the round constants
         # can be reproduced from (p, t, R) instead of relying on Sage's unseeded random_element().
         seed = f"GMiMC({self.p},{self.t},{self.R})".encode("ascii")
+
+        rcons = XOFFieldElementSampler(seed=seed + b"aff", p=self.p, xof="shake_256", sampling="mod").grid(self.R, 1)
+        rcons = [con[0] for con in rcons]
+
+        return rcons
+
+class GMiMC2Params(GMiMCParams):
+    def __init__(
+        self,
+        p:           int,
+        t:           int,
+        R:           int = None,
+        M:           list[list[int]] = None,
+        M_IO:        list[list[int]] = None,
+        alpha:       int = 2,
+        rcons:       list[int] = None,
+        # Sponge parameters (derived if not provided)
+        r:           int = None,
+        c:           int = None,
+        d:           int = None,
+        # Target security level (default 128 bits)
+        kappa:       int = 128,
+        toy:         bool = False,
+    ):
+        """
+        Parameters
+        ----------
+        p     : field characteristic (prime)
+        t     : permutation state size (branches)
+        R     : number of rounds; derived via _init_rounds if not provided (not yet implemented)
+        M     : matrix (txt); generated via _init_mat (cyclic-shift permutation matrix) if not provided
+        alpha : exponent of the power-map S-box (its degree)
+        rcons : R affine round constants; generated via _init_cons if not provided
+        r     : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
+        c     : capacity (number of inner state elements for sponge); derived if not provided
+        d     : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        kappa : target security level in bits (default 128)
+        toy   : if True, recommendation-level checks warn instead of raising (default False)
+        """
+        # Input sanitization
+        GMiMC2Params._input_sanitization(SimpleNamespace(**{k: v for k, v in locals().items() if k != "self"}))
+
+        # General settings
+        self.p = p
+        self.F = GF(p)
+        self.t = t
+        self.r = r
+        self.c = c
+        self.kappa = kappa
+        self.toy = toy
+
+        # Sponge parameters
+        self.sponge = SpongeLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+
+        # Non-linear layer
+        self.alpha = alpha
+
+        # Rounds (set before _init_cons, whose derivation depends on R)
+        self.R = R if R is not None else self._init_rounds()
+
+        # Liner layer
+        self.M = map_nested(M if M is not None else self._init_mat(), self.to_field)
+        self.M_inv = invert_matrix(self.M)
+        self.M_IO = map_nested(M_IO if M_IO is not None else self._init_mat_IO(), self.to_field)
+        self.M_IO_inv = invert_matrix(self.M_IO)
+
+        # Round constants
+        self.rcons = map_nested(rcons if rcons is not None else self._init_cons(), self.to_field)
+
+        # Parameter sanitization
+        self._parameter_sanitization()
+
+
+    # ---------------------------------------------------------------------------
+    # Input sanitization and security requirements
+    # ---------------------------------------------------------------------------
+
+    @staticmethod
+    def _input_sanitization(params):
+        """Validate the raw constructor arguments: hard checks raise, recommendation
+        deviations warn (ParamRecommendationWarning) but do not raise."""
+
+        # --- Hard checks (must always hold) ---
+        if params.p == 2:
+            raise NotImplementedError("Characteristic 2 not implemented")
+        if params.t <= 1:
+            raise ValueError(f"state size t must be greater than 1. Got {params.t}")
+
+        # --- Warnings (recommended, not required) ---
+        field_bits = int(params.p).bit_length()
+        if field_bits < 31:
+            recommend(f"TOY VERSION: field is only {field_bits} bits", params.toy)
+
+    def _parameter_sanitization(self):
+        """Validate the fully-constructed parameter object (stored/derived values):
+        hard checks raise, recommendation deviations warn (ParamRecommendationWarning)."""
+
+        # --- Hard checks (must always hold) ---
+        if len(self.M) != self.t or any(len(row) != self.t for row in self.M):
+            raise ValueError(f"M must be a {self.t} x {self.t} matrix")
+        if len(self.rcons) < self.R:
+            raise ValueError(f"Expected at least {self.R} round constants, got {len(self.rcons)}")
+
+    # ---------------------------------------------------------------------------
+    # Derivation helpers (defaults for the optional parameters)
+    # ---------------------------------------------------------------------------
+
+    def _init_rounds(self) -> int:
+        """Derive the round number from the target security level kappa.
+        TODO: implement round numbers for 32, 64, 256 bit field sizes
+        """
+        raise NotImplementedError("Error: Not implemented -- round number derivation for GMiMC2")
+
+    def _init_mat_IO(self) -> list[list[int]]:
+        mat_io = [[0 for _ in range(self.t)] for _ in range(self.t)]
+        for i in range(0, self.t):
+                mat_io[i][i] += 1
+        if self.c == 1:
+            pass
+        elif (self.c > 1) and (self.c == self.r):
+            for i in range(0, self.t):
+                mat_io[i][(i + self.t // 2) % self.t] += 2
+        elif (self.c > 1) and (self.t % 3 == 0) and (self.c == self.t // 3) and (self.r == 2 * self.t // 3):
+            for i in range(0, self.t):
+                mat_io[i][(i + self.t // 3) % self.t] += 2
+                mat_io[i][(i + self.t // 2) % self.t] += 2
+        else:
+            raise NotImplementedError("Error: (t, r, c) combination not implemented.")
+        return mat_io
+    
+    def _init_cons(self):
+        # Deterministic constant generation via SHAKE256, so the round constants
+        # can be reproduced from (p, t, R) instead of relying on Sage's unseeded random_element().
+        seed = f"GMiMC2({self.p},{self.t},{self.R})".encode("ascii")
 
         rcons = XOFFieldElementSampler(seed=seed + b"aff", p=self.p, xof="shake_256", sampling="mod").grid(self.R, 1)
         rcons = [con[0] for con in rcons]
