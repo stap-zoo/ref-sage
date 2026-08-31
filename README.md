@@ -3,18 +3,19 @@ Python/Sage reference implementations of STAP primitives, intended for correctne
 
 ## Structure
 
-Shared modules at the root level:
+Shared code lives in the `utils/` package plus one root-level module, `recommendations.py`:
 
-- **`fields.py`** frozen dataclass definitions for the prime fields used across primitives (BLS12-381, BN254, ST, Goldilocks, ...). Each entry stores the characteristic `p`, the smallest permutation exponent `alpha` with `gcd(alpha, p-1) = 1`, its modular inverse `alpha_inv`, and auxiliary parameters.
-- **`modes.py`** field-agnostic hash construction modes that can be instantiated by any permutation:
-  - `compress_davies_meyer` Davies-Meyer compression: `trunc(perm(x_m ∥ x_c) + (x_m ∥ x_c))`.
-  - `compress_jive` *Jive_b* compression: `out[i] = sum_j (x[i+c*j] + perm(x)[i+c*j])`, see [Bouvier et al., CRYPTO 2023](https://eprint.iacr.org/2022/840) (Anemoi paper).
-  - `hash_sponge` standard sponge (absorb rate-sized blocks with zero-padding, squeeze `digest_size` elements).
-  - `hash_sponge_pi` variant *sponge-pi* of arithmetization-oriented sponges, see [Lefevre et al., ToSC 2025](https://tosc.iacr.org/index.php/ToSC/article/view/12073).
-  - `hash_sponge_hirose` Hirose variant of the sponge with a domain separator added after the final absorption, used by Anemoi.
-  - `hash_sponge_safe` Sponge API *SAFE* for Field Elements, see [Aumasson et al., ePrint](https://eprint.iacr.org/2023/522).
-  - `pad_zero` / `pad_pi` / `pad_one` padding rules used by the sponge variants.
-- **`utils.py`** shared helpers
+- **`utils/field.py`** the `Field` frozen dataclass and the predefined prime fields used across primitives (BLS12-381, BN254, ST, Goldilocks, Mersenne-31, Pallas/Vesta, ...). Each entry stores the characteristic `p`, extension degree `n` and bit size, the factorization of `p-1`, a multiplicative `generator`, and the smallest permutation exponent `alpha` with `gcd(alpha, p-1) = 1` together with its modular inverse `alpha_inv`.
+- **`utils/mode.py`** field-agnostic hash construction modes that can be instantiated by any permutation:
+  - The `Sponge` base class and its variants, each fixing an absorb/squeeze convention and padding rule: `SpongePlain`, `SpongeLE` (little-endian rate ordering), `SpongeCLE`, `Sponge2`, `SpongeRescue`, `SpongeRPO`, `SpongeHirose` (Hirose variant with a domain separator after the final absorption, used by Anemoi), `SpongePI` (*sponge-pi*, see [Lefevre et al., ToSC 2025](https://tosc.iacr.org/index.php/ToSC/article/view/12073)), and `SpongeSAFE` (Sponge API *SAFE* for Field Elements, see [Aumasson et al., ePrint](https://eprint.iacr.org/2023/522)).
+  - Compression functions: `compress_davies_meyer` Davies-Meyer compression `trunc(perm(x_m ∥ x_c) + (x_m ∥ x_c))`; `compress_jive` *Jive_b* compression `out[i] = sum_j (x[i+c*j] + perm(x)[i+c*j])`, see [Bouvier et al., CRYPTO 2023](https://eprint.iacr.org/2022/840) (Anemoi paper); `compress_trunc` truncation; and the generic `compress` dispatcher with `resolve_compression_params`.
+  - `pad_zero` / `pad_simple` padding rules used by the sponge and compression variants.
+- **`utils/matrix.py`** matrix/vector arithmetic, nested-list mapping, and MDS/diffusion-matrix constructions (circulant, Cauchy/Vandermonde, M4 block-circulant, ...).
+- **`utils/sampler.py`** deterministic field-element samplers (XOF-seeded) used to derive round constants reproducibly.
+- **`utils/lut.py`** lookup-table helpers for LUT-based constructions (Reinforced Concrete, Monolith, Skyscraper).
+- **`utils/complexities.py`** attack-complexity estimators (Gröbner-basis, differential, ...) used by the round-number derivations.
+- **`utils/poly.py`** multivariate-polynomial representations and coordinate polynomials of power maps, for algebraic cryptanalysis.
+- **`recommendations.py`** the `ParamRecommendationWarning` / `ModeRecommendationWarning` categories and the `recommend` helper: recommendation-level checks warn for toy instances and raise otherwise.
 
 Each primitive lives in its own folder and follows a common layout:
 
