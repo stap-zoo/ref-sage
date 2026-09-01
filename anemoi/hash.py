@@ -1,30 +1,19 @@
 # hash.py
-# ---------------------------------------------------------------------------
-# Anemoi: the permutation (round function) and the hash modes built on it.
-#
-# Constructed from a fully-specified AnemoiParams object.
-# _open_flystel / _closed_flystel are per-column S-box helpers.
-# ---------------------------------------------------------------------------
+# Anemoi: AnemoiPerm (permutation) and its mode functions (AnemoiHash, AnemoiCompress).
 
 from anemoi.params import AnemoiParams
 from utils.matrix import matvecmul, vecadd, vecsub
+from utils.primitive import Permutation, HashFunction, CompressionFunction
 
-from utils.mode import compress_jive
 
-
-class Anemoi:
+class AnemoiPerm(Permutation):
     # ---------------------------------------------------------------------------
     # Initialization
     # ---------------------------------------------------------------------------
 
     def __init__(self, params: AnemoiParams):
-        self.F = params.F
-        self.to_field = params.to_field
-        self.from_field = params.from_field
+        super().__init__(params)  # F, to_field, from_field, t, p, kappa, toy
         self.l = params.l
-        self.t = params.t
-        self.kappa = params.kappa
-        self.toy = params.toy
 
         # Rounds
         self.R = params.R
@@ -45,9 +34,6 @@ class Anemoi:
         self.My_inv = params.My_inv
         self.C = params.C
         self.D = params.D
-
-        # Hash modes
-        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component functions (state is x || y with x = state[:l], y = state[l:])
@@ -139,7 +125,7 @@ class Anemoi:
     # Permutation
     # ---------------------------------------------------------------------------
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -150,7 +136,7 @@ class Anemoi:
             state = self.nonlinear_layer(state, r)
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -161,20 +147,19 @@ class Anemoi:
             state = self.constant_addition_inv(state, r)
         return self._pre_rounds_inv(state)
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
 
-    def compress_2_to_1(self, x: list, y: list) -> list:
-        """Jive_2 compression of the x- and y-lane into l elements."""
-        if len(x) != self.l or len(y) != self.l:
-            raise ValueError(f"Invalid input sizes. Expected ({self.l},{self.l}), got ({len(x)},{len(y)})")
-        return compress_jive(
-            perm=self.permutation,
-            state=x + y,
-            d=self.t//2,
-            to_field=self.to_field,
-        )
+# ---------------------------------------------------------------------------
+# Hash functions
+#
+# AnemoiPerm above is JUST the permutation. Each mode is its own function object over it:
+#     P = AnemoiPerm(params)
+#     H = AnemoiHash(P, params.sponge)     # Hirose sponge:                 H.permute, H.hash
+#     C = AnemoiCompress(P, params.comp)   # Jive_2 compression (2l -> l):  C.permute, C.compress
+# The arity of the Jive compression comes from the comp dict (e.g. dict(a=2)).
+# ---------------------------------------------------------------------------
 
-    def hash_sponge(self, data: list) -> list:
-        return self.sponge.hash(self.permutation, data)
+class AnemoiHash(HashFunction):
+    SPONGE_KIND = "hirose"    # Anemoi's Hirose-mode sponge
+
+class AnemoiCompress(CompressionFunction):
+    COMP_KIND = "jive"        # Jive_a: a-to-1 (comp=dict(a=2) -> 2l -> l)

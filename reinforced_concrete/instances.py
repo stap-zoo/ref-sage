@@ -1,11 +1,5 @@
 # instances.py
-# ---------------------------------------------------------------------------
-# Concrete, named parameter sets for Reinforced Concrete.
-#
-# Each entry is a ready-to-use ReinforcedConcreteParams instance pinned to a
-# specific field from utils/field.py, so every consumer agrees on the exact same
-# parameters. Naming convention: RC_<FIELD>_<VARIANT>.
-# ---------------------------------------------------------------------------
+# Named parameter sets for Reinforced Concrete (<PREFIX>_<FIELD>_<VARIANT>).
 
 from utils.field import BLS12_381_SCALAR, BN254_SCALAR, ST
 from reinforced_concrete.params import ReinforcedConcreteParams
@@ -73,9 +67,7 @@ RC_BLS12_T3 = ReinforcedConcreteParams(
     COEFFS=RC_BLS12_AB,
     t=3,
     M=circulant([2, 1, 1]),
-    r=2,
-    c=1,
-    d=1,
+    sponge=dict(r=2, c=1, d=1),
 )
 
 # ---------------------------------------------------------------------------
@@ -139,9 +131,7 @@ RC_BN254_T3 = ReinforcedConcreteParams(
     COEFFS=RC_BN254_AB,
     t=3,
     M=circulant([2, 1, 1]),
-    r=2,
-    c=1,
-    d=1,
+    sponge=dict(r=2, c=1, d=1),
 )
 
 # ---------------------------------------------------------------------------
@@ -223,7 +213,5 @@ RC_ST_T3 = ReinforcedConcreteParams(
     COEFFS=RC_ST_AB,
     t=3,
     M=circulant([2, 1, 1]),
-    r=2,
-    c=1,
-    d=1,
+    sponge=dict(r=2, c=1, d=1),
 )

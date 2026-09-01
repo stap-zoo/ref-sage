@@ -1,14 +1,5 @@
 # params.py
-# ---------------------------------------------------------------------------
-# Parameter definitions for the Marvellous family: RescueParams and its
-# subclasses RescuePrimeParams and RescuePrimeOptimizedParams (RPO).
-#
-# Each params class is the single source of truth for an instance. It sanitizes
-# user-facing parameters and expands them into a fully-specified instance that
-# the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper. Settings that depart from 
-# the recommended ones raise a ParamRecommendationWarning rather than an error.
-# ---------------------------------------------------------------------------
+# RescueParams, RescuePrimeParams, RescuePrimeOptimizedParams, XHashParams: the fully-specified parameter set for Marvellous (single source of truth per instance).
 
 # Structural imports
 import warnings
@@ -22,7 +13,6 @@ from sage.all import GF, Integer, matrix, vector, flatten, PolynomialRing
 # Custom imports
 from utils.matrix import vandermonde_mds_matrix, map_nested, invert_matrix, circulant
 from utils.sampler import XOFFieldElementSampler
-from utils.mode import SpongeRescue, SpongeRPO, Sponge2
 from utils.complexities import gb_comp
 from utils.field import GOLDILOCKS, MERSENNE31
 from utils.poly import poly_to_aos, map_coeffs, univ_from_list, power_map_coordinate_polys, diff_polys_list
@@ -56,7 +46,6 @@ XHASH_MDS_M31_T32_ROW = [
 
 class RescueParams:
     LABEL = None
-    SPONGE = SpongeRescue
 
     def __init__(
         self,
@@ -68,10 +57,10 @@ class RescueParams:
         g:         int = None,
         M:         list[list[int]] = None,
         rcons:     list[list[int]] = None,
-        # Sponge parameters (derived if not provided)
-        r:         int = None,
-        c:         int = None,
-        d:         int = None,
+        # Modes of operation: per-mode param dicts (or None). sponge=dict(r,c,d); comp stays
+        # None (Marvellous's Merkle 2-to-1 is just the sponge hash of the concatenation).
+        sponge:    dict = None,
+        comp:      dict = None,
         # Target security level (default 128 bits)
         kappa:     int = 128,
         toy:       bool = False,
@@ -87,9 +76,8 @@ class RescueParams:
         g         : a primitive element of GF(p) (e.g. Field.generator); _init_g if not provided
         M         : MDS matrix (txt); generated via _init_mat if not provided
         rcons     : (2*R+1)xt round-constants; generated via _init_cons if not provided
-        r         : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
-        c         : capacity (number of inner state elements for sponge); derived if not provided
-        d         : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        sponge    : sponge params dict dict(r, c, d); d defaults to r // 2 if omitted
+        comp      : compression params dict, or None (Marvellous uses the sponge for compression)
         kappa     : target security level in bits (default 128)
         toy       : if True, recommendation-level checks warn instead of raising (default False)
         """
@@ -104,10 +92,12 @@ class RescueParams:
         self.kappa = kappa
         self.toy = toy
 
-        # Sponge parameters
-        if d is None and r is not None: # TODO double-check
-            d = r // 2  
-        self.sponge = self.SPONGE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+        # Modes of operation: per-mode param dicts (consumed by the mode functions). Keep the
+        # d = r // 2 fallback so the digest defaults to half the rate when omitted.
+        self.comp = comp
+        self.sponge = dict(sponge) if sponge is not None else None
+        if self.sponge is not None and self.sponge.get("d") is None and self.sponge.get("r") is not None:
+            self.sponge["d"] = self.sponge["r"] // 2
 
         # Non-linear layer
         self.alpha = alpha if alpha is not None else self._init_alpha()
@@ -237,7 +227,7 @@ class RescueParams:
     def _l1(self) -> int:
         """Instance-specific number of rounds that can be attacked by a Gröbner basis attack"""
         # Following Equation (9) in https://eprint.iacr.org/2019/426.pdf
-        nvar = lambda r: self.t * r + self.sponge.d  # number of variables/equations
+        nvar = lambda r: self.t * r + self.sponge["d"]  # number of variables/equations
         dcon = lambda r: floor(0.5 * (self.alpha - 1) * self.t * r + 2)  # extrapolation for observed solving degree
         R = 1
         while gb_comp(dreg=dcon(R), nv=nvar(R), w=2) < self.kappa:
@@ -259,11 +249,10 @@ class RescuePrimeParams(RescueParams):
         - security margin: reduced from 100% to 50%
     """
     LABEL = "Rescue-XLIX"
-    SPONGE = SpongeRescue
 
     def _l1(self) -> int:
         """Instance-specific number of rounds that can be attacked by a Gröbner basis attack"""
-        nvar = lambda r: self.t * (r - 1) + self.sponge.d  # number of variables/equations
+        nvar = lambda r: self.t * (r - 1) + self.sponge["d"]  # number of variables/equations
         dcon = lambda r: floor(0.5 * (self.alpha - 1) * self.t * (r - 1) + 2)  # extrapolation for observed solving degree
         R = 1
         while gb_comp(dreg=dcon(R), nv=nvar(R), w=2) < self.kappa:
@@ -280,7 +269,7 @@ class RescuePrimeParams(RescueParams):
         return vandermonde_mds_matrix(self.p, self.t, self.g, transpose=True)
 
     def _init_cons(self) -> list[list[int]]:
-        seed = f"{self.LABEL}({self.p},{self.t},{self.sponge.c},{self.kappa})".encode("ascii")
+        seed = f"{self.LABEL}({self.p},{self.t},{self.sponge['c']},{self.kappa})".encode("ascii")
         return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_256", sampling="mod").grid(2 * self.R, self.t)
 
     def _parameter_sanitization(self):
@@ -308,7 +297,6 @@ class RescuePrimeOptimizedParams(RescuePrimeParams):
         - security margin: similar to RescuePrime, but reduced by one round
     """
     LABEL = "RPO"
-    SPONGE = SpongeRPO
 
     def _init_rounds(self) -> int:
         # _l0 reused from Rescue, _l1 reused from RescuePrime
@@ -332,7 +320,6 @@ class XHashParams(RescuePrimeOptimizedParams):
           (see https://hackmd.io/@sKYgEqCsSZW5mqQfCGUHvA/SkUsv8qAZg) TODO add to matrix derivation strategies
     """
     LABEL = "RPO" # Same label for rcons derivation as for RPO
-    SPONGE = Sponge2
 
     def __init__(
         self, 
@@ -347,7 +334,8 @@ class XHashParams(RescuePrimeOptimizedParams):
         cpolys  : coordinate polynomials in Fp[a,b,c] describing power map in Fp[x]/fmod; derived if not given
                   cpolys[i] is the i-th coordinate polynomial, given as a list of terms tuple[int, tuple[int]],
                   where each term-tuple stores the coefficient and the exponent tuple. AoS format, see utils.poly.
-        fmod    : coefficients (non-sparse) of degree 3 irreducible polynomial in Fp[x] used for field extension
+        fmod    : coefficients (non-sparse) of an irreducible polynomial in Fp[x] used for the field extension;
+                  its degree is the extension degree (default 3), and t must be divisible by it
         skipbox : for aggressive versions [mod,rem] such that forward S-Box i is skipped whenever i % mod = rem
         kwargs  : arguments passed to parent class
         """
@@ -396,7 +384,7 @@ class XHashParams(RescuePrimeOptimizedParams):
     def _init_cons(self) -> list[list[int]]:
         # Same seed scheme as RPO, but generate exactly n_rcons rows (driven by the round
         # structure) rather than the parent's 2*R.
-        seed = f"{self.LABEL}({self.p},{self.t},{self.sponge.c},{self.kappa})".encode("ascii")
+        seed = f"{self.LABEL}({self.p},{self.t},{self.sponge['c']},{self.kappa})".encode("ascii")
         return XOFFieldElementSampler(seed=seed, p=self.p, xof="shake_256", sampling="mod").grid(self.n_rcons, self.t)
 
     def _init_rounds(self) -> int:
@@ -405,29 +393,46 @@ class XHashParams(RescuePrimeOptimizedParams):
         return super()._init_rounds() - 1
 
     def _init_sbox_P3(self, cpolys: list, fmod: list):
+        # Default extension: a degree-3 irreducible modulus (the standard XHash setting).
         if fmod is None and cpolys is None:
             R = PolynomialRing(self.F, 'x')
             fmod = R.irreducible_element(n=3, algorithm='first_lexicographic')
 
-        # Derive cpolys from fmod, if given
+        # Derive cpolys from fmod, if given. The extension degree is READ OFF fmod (its degree),
+        # not hardcoded.
         cpolys_derived = None
+        n_fmod = None
         if fmod is not None:
             R = PolynomialRing(self.F, 'x')
             f = univ_from_list(R.gen(), fmod)
-            if not f.is_irreducible() or f.degree() != 3:
-                raise ValueError(f"fmod = {f} is not irreducible of degree 3 over {self.F}")
+            if not f.is_irreducible() or f.degree() < 2:
+                raise ValueError(f"fmod = {f} is not an irreducible extension modulus of degree >= 2 over {self.F}")
+            n_fmod = f.degree()
             Fn = self.F.extension(f, name='X')
             cpolys_derived = [poly_to_aos(poly) for poly in power_map_coordinate_polys(Fn, self.alpha)]
-        
-        # Map coefficients of cpolys into field, if given
+
+        # Map coefficients of cpolys into field, if given. Here the extension degree is the number
+        # of coordinate polynomials (= the length of every exponent tuple).
         cpolys_given = None
+        n_cpolys = None
         if cpolys is not None:
-            if len(cpolys) != 3:
-                raise ValueError(f"Wrong number of coordinate polynomials. Expected len(cpolys) = 3, got {len(cpolys)}")
-            if not all(len(exps) == 3 for poly in cpolys for coeff, exps in poly):
-                raise ValueError("All exponent tuples must have length 3")
+            n_cpolys = len(cpolys)
+            if n_cpolys < 2:
+                raise ValueError(f"Expected at least 2 coordinate polynomials (the extension degree), got {n_cpolys}")
+            if not all(len(exps) == n_cpolys for poly in cpolys for coeff, exps in poly):
+                raise ValueError(f"All exponent tuples must have length = extension degree ({n_cpolys})")
             cpolys_given = [map_coeffs(p, self.to_field) for p in cpolys]
-        
+
+        # Extension degree, taken from whichever source is present; if both, they must agree.
+        if n_fmod is not None and n_cpolys is not None and n_fmod != n_cpolys:
+            raise ValueError(f"extension-degree mismatch: fmod has degree {n_fmod}, but {n_cpolys} coordinate polynomials were given")
+        self.ext_degree = n_fmod if n_fmod is not None else n_cpolys
+
+        # The P3 S-box operates on consecutive ext_degree-coordinate blocks of the state (each block
+        # is one extension-field element), so the state must hold a whole number of them.
+        if self.t % self.ext_degree != 0:
+            raise ValueError(f"XHash state size t = {self.t} must be divisible by the extension degree {self.ext_degree}")
+
         # Set coordinate polynomials
         if cpolys_derived is not None and cpolys_given is not None:
             # both supplied -> validate agreement

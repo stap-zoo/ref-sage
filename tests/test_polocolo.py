@@ -22,7 +22,7 @@ import pytest
 from sage.all import GF
 
 from recommendations import ParamRecommendationWarning
-from polocolo.hash import Polocolo
+from polocolo.hash import PolocoloPerm, PolocoloHash
 from polocolo.params import PolocoloParams, MDS
 from polocolo.instances import (
     POLOCOLO_BLS12_381_SCALAR_T3,
@@ -1075,10 +1075,10 @@ def test_permutation_kat_reference():
     # T4_TIGHT is the single shipped reference instance whose parameters match the
     # paper, so its vectors apply to our named instance directly. The other seven
     # are covered by test_permutation_kat_reference_reconstruction below.
-    prim = Polocolo(POLOCOLO_BLS12_381_SCALAR_T4_TIGHT)
+    P = PolocoloPerm(POLOCOLO_BLS12_381_SCALAR_T4_TIGHT)
     for label, expected in REFERENCE_PERMUTATION_OUTPUTS["T4_TIGHT"].items():
-        inp = [prim.to_field(x) for x in _reference_input(label, prim.t)]
-        assert [prim.from_field(x) for x in prim.permutation(inp)] == expected, label
+        inp = [P.to_field(x) for x in _reference_input(label, P.t)]
+        assert [P.from_field(x) for x in P.permute(inp)] == expected, label
 
 
 @pytest.mark.parametrize("ref", REFERENCE_INSTANCES, ids=[r[0] for r in REFERENCE_INSTANCES])
@@ -1099,11 +1099,11 @@ def test_permutation_kat_reference_reconstruction(ref):
         rcons = sampler.grid(R, t)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ParamRecommendationWarning)
-        params = PolocoloParams(p=P_BLS12, t=t, m=m, R=R, M=M, rcons=rcons, r=t - 1, c=1, d=1)
-    prim = Polocolo(params)
+        params = PolocoloParams(p=P_BLS12, t=t, m=m, R=R, M=M, rcons=rcons, sponge=dict(r=t - 1, c=1, d=1))
+    P = PolocoloPerm(params)
     for label, expected in REFERENCE_PERMUTATION_OUTPUTS[name].items():
-        inp = [prim.to_field(x) for x in _reference_input(label, prim.t)]
-        assert [prim.from_field(x) for x in prim.permutation(inp)] == expected, label
+        inp = [P.to_field(x) for x in _reference_input(label, P.t)]
+        assert [P.from_field(x) for x in P.permute(inp)] == expected, label
 
 
 PERMUTATION_KAT_CASES = [(name, params, kat) for name, params in INSTANCES
@@ -1114,9 +1114,9 @@ PERMUTATION_KAT_IDS = [f"{name}-{i}" for name, _ in INSTANCES
 
 @pytest.mark.parametrize("name,params,kat", PERMUTATION_KAT_CASES, ids=PERMUTATION_KAT_IDS)
 def test_permutation_kat_self(name, params, kat):
-    prim = Polocolo(params)
-    out = prim.permutation([prim.to_field(x) for x in kat["input"]])
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    P = PolocoloPerm(params)
+    out = P.permute([P.to_field(x) for x in kat["input"]])
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 
 SPONGE_KAT_CASES = [(name, params, kat) for name, params in INSTANCES
@@ -1128,9 +1128,10 @@ SPONGE_KAT_IDS = [f"{name}-{i}" for name, _ in INSTANCES
 @pytest.mark.parametrize("name,params,kat", SPONGE_KAT_CASES, ids=SPONGE_KAT_IDS)
 def test_sponge_kat_self(name, params, kat):
     # cases cover a short (padded) input and one exactly rate-sized block
-    prim = Polocolo(params)
-    out = prim.hash_sponge([prim.to_field(x) for x in kat["input"]])
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    P = PolocoloPerm(params)
+    H = PolocoloHash(P, params.sponge)
+    out = H.hash([P.to_field(x) for x in kat["input"]], input_len_fixed=True)
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 
 # ---------------------------------------------------------------------------
@@ -1139,29 +1140,29 @@ def test_sponge_kat_self(name, params, kat):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_roundtrip(name, params):
-    prim = Polocolo(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = PolocoloPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_layer_roundtrip(name, params):
-    prim = Polocolo(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(prim.R):
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+    P = PolocoloPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(P.R):
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+        assert P.constant_addition_inv(P.constant_addition(inp, r), r) == inp
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_sbox_roundtrip_and_zero(name, params):
-    prim = Polocolo(params)
-    for x in [prim.F.zero(), prim.F.one(), prim.to_field(-1), prim.F.random_element()]:
-        assert prim._sbox_inv(prim._sbox(x)) == x
-    assert prim._sbox(prim.F.zero()) == prim.F.zero()   # S(0) = 0 by specification
+    P = PolocoloPerm(params)
+    for x in [P.F.zero(), P.F.one(), P.to_field(-1), P.F.random_element()]:
+        assert P._sbox_inv(P._sbox(x)) == x
+    assert P._sbox(P.F.zero()) == P.F.zero()   # S(0) = 0 by specification
 
 
 # ---------------------------------------------------------------------------
@@ -1170,26 +1171,27 @@ def test_sbox_roundtrip_and_zero(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_deterministic(name, params):
-    prim = Polocolo(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = PolocoloPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_distinct_inputs(name, params):
-    prim = Polocolo(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = PolocoloPerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_output_sizes(name, params):
-    prim = Polocolo(params)
-    assert len(prim.permutation([prim.F.zero()] * prim.t)) == prim.t
-    assert len(prim.hash_sponge([prim.F.random_element() for _ in range(prim.sponge.r)])) == prim.sponge.d
+    P = PolocoloPerm(params)
+    H = PolocoloHash(P, params.sponge)
+    assert len(P.permute([P.F.zero()] * P.t)) == P.t
+    assert len(H.hash([P.F.random_element() for _ in range(params.sponge["r"])], input_len_fixed=True)) == H.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -1369,20 +1371,20 @@ def _toy_params():
     # p = 113: 112 = 16 * 7, so m = 16 is a valid power-of-two residue order
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ParamRecommendationWarning)
-        return PolocoloParams(p=113, t=3, m=16, R=3, r=2, c=1, d=1, toy=True)
+        return PolocoloParams(p=113, t=3, m=16, R=3, sponge=dict(r=2, c=1, d=1), toy=True)
 
 
 def test_toy_sbox_is_a_permutation():
-    prim = Polocolo(_toy_params())
-    images = {prim.from_field(prim._sbox(prim.to_field(x))) for x in range(113)}
+    P = PolocoloPerm(_toy_params())
+    images = {P.from_field(P._sbox(P.to_field(x))) for x in range(113)}
     assert len(images) == 113
-    assert prim._sbox(prim.F.zero()) == prim.F.zero()
+    assert P._sbox(P.F.zero()) == P.F.zero()
 
 
 def test_toy_roundtrip():
-    prim = Polocolo(_toy_params())
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = PolocoloPerm(_toy_params())
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 
 def test_low_addition_mds_search():
@@ -1434,7 +1436,7 @@ def test_init_mat_fallback_warns_and_is_mds():
     # probability at the starting budget collapses (e.g. t = 8 typically
     # escalates twice before finding a matrix).
     with pytest.warns(ParamRecommendationWarning):
-        params = PolocoloParams(p=113, t=2, m=16, R=3, r=1, c=1, d=1, kappa=ceil(log2(113))*2, toy=True) # capacity/digest holds 2*kappa bits
+        params = PolocoloParams(p=113, t=2, m=16, R=3, sponge=dict(r=1, c=1, d=1), kappa=ceil(log2(113))*2, toy=True) # capacity/digest holds 2*kappa bits
     assert is_mds(params.M)
 
 
@@ -1443,38 +1445,38 @@ def test_init_mat_fallback_warns_and_is_mds():
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = Polocolo(POLOCOLO_BLS12_381_SCALAR_T3)
+    P = PolocoloPerm(POLOCOLO_BLS12_381_SCALAR_T3)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
+        P.permute([P.F.zero()] * (P.t + 1))
 
 
 def test_m_must_divide_p_minus_1():
     with pytest.raises(ValueError):
-        PolocoloParams(p=P_BLS12, t=3, m=7, R=6, r=2, c=1, d=1)   # 7 does not divide p-1
+        PolocoloParams(p=P_BLS12, t=3, m=7, R=6, sponge=dict(r=2, c=1, d=1))   # 7 does not divide p-1
 
 
 def test_sigma_must_be_a_permutation():
     with pytest.raises(ValueError):
-        PolocoloParams(p=P_BLS12, t=3, m=4, R=6, sigma=[0, 1, 2, 2], r=2, c=1, d=1)
+        PolocoloParams(p=P_BLS12, t=3, m=4, R=6, sigma=[0, 1, 2, 2], sponge=dict(r=2, c=1, d=1))
 
 
 def test_matrix_shape_is_checked():
     with pytest.raises(ValueError):
-        PolocoloParams(p=P_BLS12, t=3, m=1024, R=6, M=[[1, 2], [3, 4]], r=2, c=1, d=1)
+        PolocoloParams(p=P_BLS12, t=3, m=1024, R=6, M=[[1, 2], [3, 4]], sponge=dict(r=2, c=1, d=1))
 
 
 def test_recommended_instance_constructs_without_warnings():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        PolocoloParams(p=P_BLS12, t=3, m=1024, R=6, r=2, c=1, d=1)
+        PolocoloParams(p=P_BLS12, t=3, m=1024, R=6, sponge=dict(r=2, c=1, d=1))
     assert not [w for w in caught if issubclass(w.category, ParamRecommendationWarning)]
 
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        PolocoloParams(p=113, t=3, m=16, R=3, r=2, c=1, d=1, toy=True)
+        PolocoloParams(p=113, t=3, m=16, R=3, sponge=dict(r=2, c=1, d=1), toy=True)
 
 
 def test_non_recommended_m_warns():
     with pytest.warns(ParamRecommendationWarning):
-        PolocoloParams(p=P_BLS12, t=4, m=1024, R=5, r=3, c=1, d=1)   # reference T4; paper says 512
+        PolocoloParams(p=P_BLS12, t=4, m=1024, R=5, sponge=dict(r=3, c=1, d=1))   # reference T4; paper says 512

@@ -1,36 +1,20 @@
 # hash.py
-# ---------------------------------------------------------------------------
-# Polocolo: the permutation (round function) and the hash mode built on it.
-#
-# Constructed from a fully-specified PolocoloParams object.
-
-# NOTE: the S-box (_sbox / _sbox_inv) is a lookup-table component: it keys a
-# precomputed table by the integer value of the power residue x^((p-1)/m). It is
-# therefore inherently NON-generic -- it branches on the value of a state element
-# and cannot run symbolically over a polynomial ring, unlike constant_addition
-# and linear_layer. This is a deliberate exception to the "generic component"
-# contract, shared with the other lookup-based schemes (Reinforced Concrete,
-# Monolith, Skyscraper); algebraic models replace the lookup by the constraint
-# x*y = g^((m+1)r + sigma(r)) for a guessed power residue r, or by the
-# interpolating polynomials f/h of utils.lut.sigma_conditions_hold.
-# ---------------------------------------------------------------------------
+# Polocolo: PolocoloPerm (permutation) and its mode functions (PolocoloHash).
+# NOTE: uses a lookup-table S-box -- non-generic (cannot run symbolically over a polynomial ring).
 
 from polocolo.params import PolocoloParams
+from utils.primitive import Permutation, HashFunction
 from utils.matrix import matvecmul, vecadd, vecsub
 
 
-class Polocolo:
+class PolocoloPerm(Permutation):
     # ---------------------------------------------------------------------------
     # Initialization
     # ---------------------------------------------------------------------------
 
     def __init__(self, params: PolocoloParams):
-        # General settings
-        self.F = params.F
-        self.to_field = params.to_field
-        self.from_field = params.from_field
-        self.p = params.p
-        self.t = params.t
+        # General settings (F, to_field, from_field, t, p, kappa, toy copied by Permutation)
+        super().__init__(params)
 
         # Rounds
         self.R = params.R
@@ -48,8 +32,6 @@ class Polocolo:
         # Round constants
         self.rcons = params.rcons
 
-        # Hash modes
-        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component layers
@@ -122,7 +104,7 @@ class Polocolo:
     # Permutation
     # ---------------------------------------------------------------------------
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -133,7 +115,7 @@ class Polocolo:
             state = self.nonlinear_layer(state, r)
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -144,9 +126,17 @@ class Polocolo:
             state = self.linear_layer_inv(state, r)
         return self._pre_rounds_inv(state)
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
 
-    def hash_sponge(self, data: list) -> list:
-        return self.sponge.hash(self.permutation, data, input_len_fixed=True)
+# ---------------------------------------------------------------------------
+# Hash function
+#
+# PolocoloPerm above is JUST the permutation. Polocolo is sponge-only (no compression):
+#     P = PolocoloPerm(params)
+#     H = PolocoloHash(P, params.sponge)
+#     H.hash(data, input_len_fixed=True)
+# ---------------------------------------------------------------------------
+
+class PolocoloHash(HashFunction):
+    SPONGE_KIND = "sponge2"
+
+

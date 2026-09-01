@@ -1,33 +1,19 @@
 # hash.py
-# ---------------------------------------------------------------------------
-# Reinforced Concrete: the permutation (round function) and the hash modes built
-# on it.
-#
-# Constructed from a fully-specified ReinforcedConcreteParams object.
-#
-# NOTE: the _bars component (and its per-element _bar helper) is a lookup-table S-box:
-# it decomposes a field element into integer digits and applies a precomputed
-# LUT. It is therefore inherently NON-generic -- it operates on the integer
-# representation and cannot run symbolically over a polynomial ring, unlike the
-# arithmetic component (_bricks, constant_addition, linear_layer). This is a 
-# deliberate exception to the "generic component" contract.
-# ---------------------------------------------------------------------------
+# Reinforced Concrete: ReinforcedConcretePerm (permutation) and its mode functions (ReinforcedConcreteHash).
+# NOTE: uses a lookup-table S-box -- non-generic (cannot run symbolically over a polynomial ring).
 
 from reinforced_concrete.params import ReinforcedConcreteParams
+from utils.primitive import Permutation, HashFunction
 from utils.matrix import matvecmul, vecadd, vecsub
 from utils.lut import mixed_radix_decompose, mixed_radix_compose
-from utils.mode import compress_davies_meyer
 
-class ReinforcedConcrete:
+class ReinforcedConcretePerm(Permutation):
     # ---------------------------------------------------------------------------
     # Initialization
     # ---------------------------------------------------------------------------
 
     def __init__(self, params: ReinforcedConcreteParams):
-        self.F = params.F
-        self.to_field = params.to_field
-        self.from_field = params.from_field
-        self.t = params.t
+        super().__init__(params)  # F, to_field, from_field, t, p, kappa, toy
 
         # Rounds
         self.R_pre = params.R_pre
@@ -52,8 +38,6 @@ class ReinforcedConcrete:
         # Round constants
         self.rcons = params.rcons
 
-        # Hash modes
-        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -143,7 +127,7 @@ class ReinforcedConcrete:
     # Permutation
     # ---------------------------------------------------------------------------
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -154,7 +138,7 @@ class ReinforcedConcrete:
             state = self.constant_addition(state, i + 1) # off-by-one due to initial round constant addition
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -165,12 +149,19 @@ class ReinforcedConcrete:
             state = self.nonlinear_layer_inv(state, i)
         return self._pre_rounds_inv(state)
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
 
-    def hash_sponge(self, data: list) -> list:
-        return self.sponge.hash(self.permutation, data)
+# ---------------------------------------------------------------------------
+# Hash function
+#
+# ReinforcedConcretePerm above is JUST the permutation. Reinforced Concrete uses a
+# length-encoded sponge; it defines no dedicated compression -- its 2-to-1 Merkle node is the
+# sponge compression of the concatenated children:
+#     P = ReinforcedConcretePerm(params)
+#     H = ReinforcedConcreteHash(P, params.sponge)
+#     H.hash(data)                                # sponge hash
+#     H.sponge.compress(P.permute, x1 + x2)       # 2-to-1 compression node (2d -> d)
+# ---------------------------------------------------------------------------
 
-    def hash_2_to_1(self, x1: list, x2:list) -> list:
-        return self.sponge.tree_hash(self.permutation, children=[x1,x2], arity=2)
+class ReinforcedConcreteHash(HashFunction):
+    SPONGE_KIND = "cle"
+

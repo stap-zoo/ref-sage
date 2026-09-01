@@ -14,7 +14,7 @@ import warnings
 
 import pytest
 
-from reinforced_concrete.hash import ReinforcedConcrete
+from reinforced_concrete.hash import ReinforcedConcretePerm, ReinforcedConcreteHash
 from reinforced_concrete.params import ReinforcedConcreteParams
 from reinforced_concrete.instances import RC_BLS12_T3, RC_BN254_T3, RC_ST_T3
 from recommendations import ParamRecommendationWarning
@@ -76,10 +76,10 @@ KAT_IDS = [
 
 @pytest.mark.parametrize("name,params,kat", KAT_CASES, ids=KAT_IDS)
 def test_permutation_kat(name, params, kat):
-    prim = ReinforcedConcrete(params)
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.permutation(inp)
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    P = ReinforcedConcretePerm(params)
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = P.permute(inp)
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 
 # ---------------------------------------------------------------------------
@@ -88,25 +88,25 @@ def test_permutation_kat(name, params, kat):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_roundtrip(name, params):
-    prim = ReinforcedConcrete(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = ReinforcedConcretePerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_layer_roundtrip(name, params):
     # Each component layer must be undone by its _inv partner. round_idx must index
     # into rcons; AffineLayer is the only round-dependent layer here.
-    prim = ReinforcedConcrete(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(prim.R):
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
-        assert prim._bricks_inv(prim._bricks(inp, r), r) == inp
-        assert prim._bars_inv(prim._bars(inp, r), r) == inp
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+    P = ReinforcedConcretePerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(P.R):
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+        assert P.constant_addition_inv(P.constant_addition(inp, r), r) == inp
+        assert P._bricks_inv(P._bricks(inp, r), r) == inp
+        assert P._bars_inv(P._bars(inp, r), r) == inp
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 
 # ---------------------------------------------------------------------------
@@ -115,36 +115,39 @@ def test_layer_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_deterministic(name, params):
-    prim = ReinforcedConcrete(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = ReinforcedConcretePerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_distinct_inputs(name, params):
-    prim = ReinforcedConcrete(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = ReinforcedConcretePerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_compress_output_size(name, params):
-    prim = ReinforcedConcrete(params)
-    x_m = [prim.F.random_element() for _ in range(prim.sponge.d)]
-    x_c = [prim.F.random_element() for _ in range(prim.sponge.d)]
-    assert len(prim.hash_2_to_1(x_m, x_c)) == prim.sponge.d
+    P = ReinforcedConcretePerm(params)
+    H = ReinforcedConcreteHash(P, params.sponge)
+    x_m = [P.F.random_element() for _ in range(params.sponge["d"])]
+    x_c = [P.F.random_element() for _ in range(params.sponge["d"])]
+    # Reinforced Concrete's 2-to-1 Merkle node is the sponge compression of the concatenated children.
+    assert len(H.sponge.compress(P.permute, x_m + x_c)) == params.sponge["d"]
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
-    prim = ReinforcedConcrete(params)
-    data = [prim.F.random_element() for _ in range(prim.sponge.r)] 
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
-    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    P = ReinforcedConcretePerm(params)
+    H = ReinforcedConcreteHash(P, params.sponge)
+    data = [P.F.random_element() for _ in range(params.sponge["r"])]
+    assert len(H.hash(data)) == H.sponge.d
+    data = [P.F.random_element() for _ in range(params.sponge["r"] * 3)]
+    assert len(H.hash(data)) == H.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +169,7 @@ def test_rcons_generated_matches_instance(name, params):
     derived = ReinforcedConcreteParams(
         p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
         R_pre=params.R_pre, R_bars=params.R_bars, R_post=params.R_post,
-        si=params.si, M=M, r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+        si=params.si, M=M, sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
     assert derived.rcons == params.rcons
 
 
@@ -176,7 +179,7 @@ def test_matrix_derivation_matches_instance(name, params):
     derived = ReinforcedConcreteParams(
         p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
         R_pre=params.R_pre, R_bars=params.R_bars, R_post=params.R_post,
-        si=params.si, r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # M omitted -> _init_mat
+        si=params.si, sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))  # M omitted -> _init_mat
     assert derived.M == params.M
 
 
@@ -186,7 +189,7 @@ def test_rounds_derivation_matches_instance(name, params):
     M, _ = _instance_ints(params)
     derived = ReinforcedConcreteParams(
         p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
-        si=params.si, M=M, r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # rounds omitted -> _init_rounds
+        si=params.si, M=M, sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))  # rounds omitted -> _init_rounds
     assert (derived.R_pre, derived.R_bars, derived.R_post) == (params.R_pre, params.R_bars, params.R_post)
 
 
@@ -195,9 +198,9 @@ def test_rounds_derivation_matches_instance(name, params):
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = ReinforcedConcrete(RC_BN254_T3)
+    P = ReinforcedConcretePerm(RC_BN254_T3)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
+        P.permute([P.F.zero()] * (P.t + 1))
 
 
 def test_alpha_must_be_permutation():
@@ -206,7 +209,7 @@ def test_alpha_must_be_permutation():
     with pytest.raises(ValueError):
         ReinforcedConcreteParams(
             p=RC_BN254_T3.p, t=3, alpha=2, R_pre=3, R_bars=1, R_post=3,
-            si=RC_BN254_T3.si, M=M, r=2, c=1, d=1)
+            si=RC_BN254_T3.si, M=M, sponge=dict(r=2, c=1, d=1))
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
@@ -217,7 +220,7 @@ def test_recommended_instance_no_warning(name, params):
         ReinforcedConcreteParams(
             p=params.p, t=params.t, alpha=params.alpha, alpha_inv=params.alpha_inv,
             R_pre=params.R_pre, R_bars=params.R_bars, R_post=params.R_post,
-            si=params.si, M=M, r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+            si=params.si, M=M, sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
 
 
 def test_constants_reproducible():
@@ -225,7 +228,7 @@ def test_constants_reproducible():
     M, _ = _instance_ints(RC_BN254_T3)
     kwargs = dict(p=RC_BN254_T3.p, t=3, alpha=RC_BN254_T3.alpha,
                   R_pre=3, R_bars=1, R_post=3, si=RC_BN254_T3.si, M=M,
-                  r=2, c=1, d=1)
+                  sponge=dict(r=2, c=1, d=1))
     a = ReinforcedConcreteParams(**kwargs)
     b = ReinforcedConcreteParams(**kwargs)
     assert a.rcons == b.rcons

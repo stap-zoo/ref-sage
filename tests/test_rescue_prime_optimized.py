@@ -14,7 +14,7 @@ import warnings
 
 import pytest
 
-from marvellous.hash import RescuePrimeOptimized
+from marvellous.hash import RescuePrimeOptimizedPerm, RescuePrimeOptimizedHash
 from marvellous.params import RescuePrimeOptimizedParams
 from marvellous.instances import (
     RPO_GOLDILOCKS_T12,
@@ -63,19 +63,19 @@ RPO_T16_KATS = [
 #@pytest.mark.skip(reason="hash_sponge is rate-first; the RPO spec is capacity-first, so the reference vectors are not reproduced yet")
 @pytest.mark.parametrize("input_seq,expected", RPO_T12_KATS)
 def test_rpo_t12_kat(input_seq, expected):
-    prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
-    inp = [prim.to_field(x) for x in input_seq]
-    out = prim.hash_sponge(inp)
-    assert [prim.from_field(x) for x in out] == expected
+    P = RescuePrimeOptimizedPerm(RPO_GOLDILOCKS_T12)
+    inp = [P.to_field(x) for x in input_seq]
+    out = RescuePrimeOptimizedHash(P, RPO_GOLDILOCKS_T12.sponge).hash(inp)
+    assert [P.from_field(x) for x in out] == expected
 
 
 #@pytest.mark.skip(reason="hash_sponge is rate-first; the RPO spec is capacity-first, so the reference vectors are not reproduced yet")
 @pytest.mark.parametrize("input_seq,expected", RPO_T16_KATS)
 def test_rpo_t16_kat(input_seq, expected):
-    prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T16)
-    inp = [prim.to_field(x) for x in input_seq]
-    out = prim.hash_sponge(inp)
-    assert [prim.from_field(x) for x in out] == expected
+    P = RescuePrimeOptimizedPerm(RPO_GOLDILOCKS_T16)
+    inp = [P.to_field(x) for x in input_seq]
+    out = RescuePrimeOptimizedHash(P, RPO_GOLDILOCKS_T16.sponge).hash(inp)
+    assert [P.from_field(x) for x in out] == expected
 
 
 # ---------------------------------------------------------------------------
@@ -84,21 +84,21 @@ def test_rpo_t16_kat(input_seq, expected):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_roundtrip(name, params):
-    prim = RescuePrimeOptimized(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = RescuePrimeOptimizedPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_layer_roundtrip(name, params):
     # Each component layer must be undone by its _inv partneprim.
-    prim = RescuePrimeOptimized(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(2 * prim.R):
-        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+    P = RescuePrimeOptimizedPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(2 * P.R):
+        assert P.constant_addition_inv(P.constant_addition(inp, r), r) == inp
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 
 # ---------------------------------------------------------------------------
@@ -107,26 +107,26 @@ def test_layer_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_digest_size(name, params):
-    prim = RescuePrimeOptimized(params)
-    out = prim.hash_sponge([prim.to_field(0)])
-    assert len(out) == prim.sponge.r // 2 == prim.sponge.d
+    P = RescuePrimeOptimizedPerm(params)
+    out = RescuePrimeOptimizedHash(P, params.sponge).hash([P.to_field(0)])
+    assert len(out) == params.sponge["r"] // 2 == params.sponge["d"]
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_deterministic(name, params):
-    prim = RescuePrimeOptimized(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = RescuePrimeOptimizedPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_distinct_inputs(name, params):
-    prim = RescuePrimeOptimized(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = RescuePrimeOptimizedPerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 # ---------------------------------------------------------------------------
@@ -134,15 +134,15 @@ def test_permutation_distinct_inputs(name, params):
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = RescuePrimeOptimized(RPO_GOLDILOCKS_T12)
+    P = RescuePrimeOptimizedPerm(RPO_GOLDILOCKS_T12)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
+        P.permute([P.F.zero()] * (P.t + 1))
 
 
 def test_toy_field_warns():
     # t=12 because the RPO circulant matrix is only defined for t in {12, 16}.
     with pytest.warns(ParamRecommendationWarning):
-        RescuePrimeOptimizedParams(p=101, t=12, r=8, c=4, d=4, toy=True)  # tiny field
+        RescuePrimeOptimizedParams(p=101, t=12, sponge=dict(r=8, c=4, d=4), toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
@@ -150,4 +150,4 @@ def test_recommended_instance_no_warning(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("error", ParamRecommendationWarning)
         RescuePrimeOptimizedParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
-                                   r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                                   sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))

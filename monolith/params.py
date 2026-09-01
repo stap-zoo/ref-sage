@@ -1,13 +1,5 @@
 # params.py
-# ---------------------------------------------------------------------------
-# Parameter definition for Monolith: the MonolithParams class.
-#
-# MonolithParams is the single source of truth for an instance. It sanitizes 
-# user-facing parameters and expands them into a fully-specified instance that
-# the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper. Settings that depart from 
-# the recommended ones raise a ParamRecommendationWarning rather than an error.
-# ---------------------------------------------------------------------------
+# MonolithParams: the fully-specified parameter set for Monolith (single source of truth per instance).
 
 # Structural imports
 import struct
@@ -21,7 +13,6 @@ from sage.all import GF, Integer
 from utils.sampler import XOFFieldElementSampler
 from utils.lut import invert_LUT, invertible_phi_from_landscape, crotl, compose
 from utils.matrix import map_nested, invert_matrix
-from utils.mode import SpongeSAFE
 
 # ---------------------------------------------------------------------------
 # Module-level constants
@@ -50,10 +41,9 @@ class MonolithParams:
         LUTs:  dict[int, list[int]] = None,
         M:     list[list[int]] = None,
         rcons: list[list[int]] = None,
-        # Sponge parameters (derived if not provided)
-        r:     int = None,
-        c:     int = None,
-        d:     int = None,
+        # Modes of operation: per-mode param dicts (or None). sponge=dict(r,c,d); comp=dict(a=2).
+        sponge: dict = None,
+        comp:   dict = None,
         # Target security level (default 128 bits)
         kappa: int = 128,
         toy: bool = False,
@@ -69,9 +59,8 @@ class MonolithParams:
         LUTs  : per-digit lookup tables used in Bar (one per distinct value in si); generated via _init_LUTs if not provided
         M     : circulant MDS matrix (txt); generated via _init_mat if not provided
         rcons : (R-1)xt round constants; generated via _init_cons (SHAKE128) if not provided
-        r     : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
-        c     : capacity (number of inner state elements for sponge); derived if not provided
-        d     : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        sponge: sponge params dict dict(r, c, d), or None for no sponge
+        comp  : compression params dict (e.g. dict(a=2)), or None
         kappa : target security level in bits (default 128)
         toy   : if True, recommendation-level checks warn instead of raising (default False)
         """
@@ -86,8 +75,8 @@ class MonolithParams:
         self.kappa = kappa
         self.toy = toy
 
-        # Sponge parameters
-        self.sponge = SpongeSAFE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+        # Modes of operation: per-mode param dicts (consumed by the mode functions).
+        self.sponge, self.comp = sponge, comp
 
         # Non-linear layers: Bars
         self.si = si

@@ -1,16 +1,5 @@
 # params.py
-# ---------------------------------------------------------------------------
-# Parameter definition for Tip5 (and its TIP4 / TIP4' variants): the Tip5Params class.
-#
-# Tip5Params is the single source of truth for an instance. It sanitizes 
-# user-facing parameters and expands them into a fully-specified instance that
-# the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper. Settings that depart from 
-# the recommended ones raise a ParamRecommendationWarning rather than an error.
-#
-# Tip4Params and Tip4Prime params implement variants detailed here: 
-# https://toposware.com/paper_tip5.pdf
-# ---------------------------------------------------------------------------
+# Tip5Params, Tip4Params, Tip4PrimeParams: the fully-specified parameter set for Tip5 (single source of truth per instance).
 
 # Structural imports
 from recommendations import recommend
@@ -23,7 +12,6 @@ from sage.all import GF, Integer
 # Custom imports
 from utils.lut import invert_LUT
 from utils.sampler import XOFFieldElementSampler
-from utils.mode import SpongeCLE
 from utils.matrix import map_nested, invert_matrix, circulant
 from utils.field import GOLDILOCKS
 from marvellous.params import RPO_MDS_ROWS   # Tip4' reuses RPO's circulant MDS
@@ -60,10 +48,10 @@ class Tip5Params:
         alpha_inv: int = GOLDILOCKS.alpha_inv,
         LUT:       list[int] = None,
         rcons:     list[list[int]] = None,
-        # Sponge parameters (derived if not provided)
-        r:          int = 10,
-        c:          int = 6,
-        d:          int = 5,
+        # Modes of operation: per-mode param dicts. Defaults are the Tip5 sponge sizes;
+        # Tip4 / Tip4' override them (and add the Jive compression) in their subclasses.
+        sponge:     dict = None,
+        comp:       dict = None,
         # Target security level (default 128 bits)
         kappa:      int = 160,
         toy:        bool = False,
@@ -81,9 +69,8 @@ class Tip5Params:
         alpha_inv : alpha^{-1} mod (p-1); computed via _init_alpha_inv if not provided
         LUT       : 256-entry lookup table for the split-and-lookup S-box; generated via _init_LUT if not provided
         rcons     : Rxt round constants; generated via Blake3 (_init_cons) if not provided
-        r         : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
-        c         : capacity (number of inner state elements for sponge); derived if not provided
-        d         : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        sponge    : sponge params dict dict(r, c, d); default dict(r=10, c=6, d=5) (Tip5)
+        comp      : compression params dict (Tip4: dict(a=4); Tip4': dict(a=3)), or None
         kappa     : target security level in bits (default 128)
         toy       : if True, recommendation-level checks warn instead of raising (default False)
         """
@@ -98,8 +85,9 @@ class Tip5Params:
         self.kappa = kappa
         self.toy = toy
 
-        # Sponge parameters
-        self.sponge = SpongeCLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+        # Modes of operation: per-mode param dicts (consumed by the mode functions).
+        self.sponge = sponge if sponge is not None else dict(r=10, c=6, d=5)
+        self.comp = comp
 
         # Montgomery constant
         self.mont_R = self.to_field(2**64) # Montgomery constant
@@ -226,14 +214,14 @@ class Tip4Params(Tip5Params):
     LABEL = "Tip4" # label for deriving rcons
 
     def __init__(self, **kwargs):
-        defaults = dict(t=16, r=12, c=4, d=4, kappa=128) # include deviations from Tip5 defaults
+        defaults = dict(t=16, sponge=dict(r=12, c=4, d=4), comp=None, kappa=128) # deviations from Tip5
         super().__init__(**{**defaults, **kwargs})
 
 class Tip4PrimeParams(Tip4Params):
     LABEL = "Tip4'" # label for deriving rcons
 
     def __init__(self, **kwargs):
-        defaults = dict(t=12, r=8, c=4, d=4, kappa=128) # include deviations from Tip4 defaults
+        defaults = dict(t=12, sponge=dict(r=8, c=4, d=4), comp=None, kappa=128) # deviations from Tip4
         super().__init__(**{**defaults, **kwargs})
     
     def _init_mat(self):

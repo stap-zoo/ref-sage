@@ -17,7 +17,7 @@ import pytest
 from math import prod
 
 from skyscraper.params import SkyscraperParams
-from skyscraper.hash import Skyscraper
+from skyscraper.hash import SkyscraperPerm, SkyscraperHash, SkyscraperCompress
 from skyscraper.instances import (
     SKYSCRAPER_BLS12_381_N1, SKYSCRAPER_BLS12_381_N2, SKYSCRAPER_BLS12_381_N3,
     SKYSCRAPER_BN254_N1, SKYSCRAPER_BN254_N2, SKYSCRAPER_BN254_N3,
@@ -138,28 +138,30 @@ SPONGE_KAT = {
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_kat(name, params):
-    prim = Skyscraper(params)
+    P = SkyscraperPerm(params)
     for kat in KAT[name]:
-        inp = [prim.to_field(x) for x in kat["input"]]
-        out = prim.permutation(inp)
-        assert [prim.from_field(x) for x in out] == kat["output"]
+        inp = [P.to_field(x) for x in kat["input"]]
+        out = P.permute(inp)
+        assert [P.from_field(x) for x in out] == kat["output"]
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_compress_kat(name, params):
-    prim = Skyscraper(params)
+    P = SkyscraperPerm(params)
+    C = SkyscraperCompress(P, params.comp)
     kat = COMPRESS_KAT[name]
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.compress(inp)
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = C.compress(inp)
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_sponge_kat(name, params):
-    prim = Skyscraper(params)
+    P = SkyscraperPerm(params)
+    H = SkyscraperHash(P, params.sponge)
     case = SPONGE_KAT[name]
-    data = [prim.to_field(i) for i in range(case["input_len"])]
-    out = [int(prim.from_field(x)) for x in prim.hash_sponge(data)]
+    data = [P.to_field(i) for i in range(case["input_len"])]
+    out = [int(P.from_field(x)) for x in H.hash(data)]
     assert out == case["output"]
 
 
@@ -169,10 +171,10 @@ def test_sponge_kat(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_roundtrip(name, params):
-    prim = Skyscraper(params)
-    state = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(state)) == state
-    assert prim.permutation(prim.permutation_inv(state)) == state
+    P = SkyscraperPerm(params)
+    state = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(state)) == state
+    assert P.permute(P.permute_inv(state)) == state
 
 # ---------------------------------------------------------------------------
 # 4.3 Consistency
@@ -180,26 +182,28 @@ def test_permutation_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_deterministic(name, params):
-    prim = Skyscraper(params)
-    state = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(state) == prim.permutation(state)
+    P = SkyscraperPerm(params)
+    state = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(state) == P.permute(state)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_distinct_inputs(name, params):
-    prim = Skyscraper(params)
-    s1 = [prim.F.random_element() for _ in range(prim.t)]
-    s2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = SkyscraperPerm(params)
+    s1 = [P.F.random_element() for _ in range(P.t)]
+    s2 = [P.F.random_element() for _ in range(P.t)]
     while s1 == s2:
-        s2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(s1) != prim.permutation(s2)
+        s2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(s1) != P.permute(s2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_output_sizes(name, params):
-    prim = Skyscraper(params)
-    assert len(prim.compress([prim.F.random_element() for _ in range(prim.t)])) == prim.n
-    assert len(prim.hash_sponge([prim.F.random_element() for _ in range(prim.sponge.r)])) == prim.sponge.d
+    P = SkyscraperPerm(params)
+    H = SkyscraperHash(P, params.sponge)
+    C = SkyscraperCompress(P, params.comp)
+    assert len(C.compress([P.F.random_element() for _ in range(P.t)])) == P.n
+    assert len(H.hash([P.F.random_element() for _ in range(params.sponge["r"])])) == H.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -209,20 +213,20 @@ def test_output_sizes(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_square_matches_extension(name, params):
     """The Square component reproduces native GF(p^n) squaring x -> x^2 * sigma_inv."""
-    prim = Skyscraper(params)
-    if prim.n == 1:
-        x = prim.F.random_element()
-        assert prim._square([x]) == [x * x * params.mont_R_inv]
+    P = SkyscraperPerm(params)
+    if P.n == 1:
+        x = P.F.random_element()
+        assert P._square([x]) == [x * x * params.mont_R_inv]
         return
     # Build GF(p^n) = F[x]/fmod and compare coordinate-wise against native squaring.
-    R = PolynomialRing(prim.F, 'x')
+    R = PolynomialRing(P.F, 'x')
     f = univ_from_list(R.gen(), params.fmod)
-    Fn = prim.F.extension(f, name='X')
+    Fn = P.F.extension(f, name='X')
     el = Fn.random_element()
-    coords = list(el.list()) + [prim.F.zero()] * (prim.n - len(el.list()))
+    coords = list(el.list()) + [P.F.zero()] * (P.n - len(el.list()))
     native = (el * el).list()
-    native = list(native) + [prim.F.zero()] * (prim.n - len(native))
-    got = prim._square(coords)
+    native = list(native) + [P.F.zero()] * (P.n - len(native))
+    got = P._square(coords)
     expected = [c * params.mont_R_inv for c in native]
     assert got == expected
 
@@ -230,9 +234,9 @@ def test_square_matches_extension(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_square_is_generic_degree_two(name, params):
     """Square runs symbolically over a polynomial ring and has total degree 2."""
-    prim = Skyscraper(params)
-    P = PolynomialRing(prim.F, 'x', prim.n)
-    out = prim._square(list(P.gens()))
+    P = SkyscraperPerm(params)
+    R = PolynomialRing(P.F, 'x', P.n)
+    out = P._square(list(R.gens()))
     assert all(poly.total_degree() == 2 for poly in out)
 
 
@@ -244,11 +248,11 @@ def test_instance_lut_is_chi(name, params):
 def test_cpolys_derivation_matches_override():
     """Supplying cpolys explicitly equals deriving them from fmod."""
     fmod = [2, 0, 0, 1]  # x^3 + 2 over the BLS12-381 scalar field
-    derived = SkyscraperParams(p=BLS12_381_SCALAR.p, si=[256] * 32, fmod=fmod, n=len(fmod)-1, r=3, c=3, d=3)
+    derived = SkyscraperParams(p=BLS12_381_SCALAR.p, si=[256] * 32, fmod=fmod, n=len(fmod)-1, sponge=dict(r=3, c=3, d=3))
     # Re-derive cpolys independently and feed them back in as integer-coefficient AoS.
     Fn = derived.F.extension(univ_from_list(PolynomialRing(derived.F, 'x').gen(), fmod), name='X')
     raw = [[(int(c), e) for c, e in poly_to_aos(poly)] for poly in power_map_coordinate_polys(Fn, 2)]
-    override = SkyscraperParams(p=BLS12_381_SCALAR.p, si=[256] * 32, cpolys=raw, n=len(raw), r=3, c=3, d=3)
+    override = SkyscraperParams(p=BLS12_381_SCALAR.p, si=[256] * 32, cpolys=raw, n=len(raw), sponge=dict(r=3, c=3, d=3))
     assert override.cpolys == derived.cpolys
 
 
@@ -256,7 +260,7 @@ def test_cpolys_derivation_matches_override():
 def test_rcons_reproducible(name, params):
     """Reconstructing the same params reproduces identical round constants and cpolys."""
     twin = SkyscraperParams(p=params.p, si=params.si, fmod=params.fmod, n=params.n,
-                            r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                            sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
     assert twin.rcons == params.rcons
     assert twin.cpolys == params.cpolys
     assert params.rcons[0] == [params.F.zero()] * params.n
@@ -269,36 +273,38 @@ def test_rcons_reproducible(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_invalid_state_size(name, params):
-    prim = Skyscraper(params)
+    P = SkyscraperPerm(params)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero() * prim.n])  # only one branch
+        P.permute([P.F.zero() * P.n])  # only one branch
+
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_compress_rejects_wrong_length(name, params):
-    prim = Skyscraper(params)
+    P = SkyscraperPerm(params)
+    C = SkyscraperCompress(P, params.comp)
     with pytest.raises(ValueError):
-        prim.compress([prim.F.zero()] * (prim.t + 1))
+        C.compress([P.F.zero()] * (P.t + 1))
     with pytest.raises(ValueError):
-        prim.compress_2_to_1([prim.F.zero()] * prim.n, [prim.F.zero()] * (prim.n + 1))
+        C.compress([P.F.zero()] * (P.t - 1))
 
 
 def test_official_instances_do_not_warn():
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("error", ParamRecommendationWarning)
-        SkyscraperParams(p=BLS12_381_SCALAR.p, si=[256] * 32, fmod=[5, 0, 1], n=2, r=2, c=2, d=2)
+        SkyscraperParams(p=BLS12_381_SCALAR.p, si=[256] * 32, fmod=[5, 0, 1], n=2, sponge=dict(r=2, c=2, d=2))
 
 
 def test_non_official_warns():
     with pytest.warns(ParamRecommendationWarning):
-        SkyscraperParams(p=GOLDILOCKS.p, si=[256] * 8, r=1, c=1, d=1, toy=True)
+        SkyscraperParams(p=GOLDILOCKS.p, si=[256] * 8, sponge=dict(r=1, c=1, d=1), toy=True)
 
 
 def test_odd_si_length_raises():
     with pytest.raises(ValueError):
-        SkyscraperParams(p=BLS12_381_SCALAR.p, si=[256] * 31, r=1, c=1, d=1)
+        SkyscraperParams(p=BLS12_381_SCALAR.p, si=[256] * 31, sponge=dict(r=1, c=1, d=1))
 
 
 def test_chi_non_permutation_radix_raises():
     with pytest.raises(NotImplementedError):
-        SkyscraperParams(p=GF(61).order(), si=[8, 8], r=1, c=1, d=1, toy=True)
+        SkyscraperParams(p=GF(61).order(), si=[8, 8], sponge=dict(r=1, c=1, d=1), toy=True)

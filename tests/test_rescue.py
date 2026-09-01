@@ -14,7 +14,7 @@ import warnings
 
 import pytest
 
-from marvellous.hash import Rescue
+from marvellous.hash import RescuePerm, RescueHash
 from marvellous.instances import (
     RESCUE_BLS12_T3,
     RESCUE_BN254_T3,
@@ -138,20 +138,21 @@ def test_st_round_constants_kat():
 
 @pytest.mark.parametrize("name,params,kat", PERMUTATION_KAT_CASES, ids=PERMUTATION_KAT_IDS)
 def test_permutation_kat(name, params, kat):
-    prim = Rescue(params)
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.permutation(inp)
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    P = RescuePerm(params)
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = P.permute(inp)
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 
 @pytest.mark.parametrize("name,params,kat", SPONGE_KAT_CASES, ids=SPONGE_KAT_IDS)
 def test_sponge_kat(name, params, kat):
-    prim = Rescue(params)
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.hash_sponge(inp, variable_length=False)
+    P = RescuePerm(params)
+    H = RescueHash(P, params.sponge)
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = H.hash(inp, input_len_fixed=True)
     # kat["output"] is the reference Sponge's full rate-length squeeze; our digest
     # (self.d <= rate) is always its prefix -- compare only the first len(out) elements.
-    assert [prim.from_field(x) for x in out] == kat["output"][:len(out)]
+    assert [P.from_field(x) for x in out] == kat["output"][:len(out)]
 
 
 # ---------------------------------------------------------------------------
@@ -160,22 +161,22 @@ def test_sponge_kat(name, params, kat):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_roundtrip(name, params):
-    prim = Rescue(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = RescuePerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_layer_roundtrip(name, params):
     # Each component layer must be undone by its _inv partneprim.
-    prim = Rescue(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(2 * prim.R):
-        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+    P = RescuePerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(2 * P.R):
+        assert P.constant_addition_inv(P.constant_addition(inp, r), r) == inp
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 
 # ---------------------------------------------------------------------------
@@ -184,28 +185,29 @@ def test_layer_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_deterministic(name, params):
-    prim = Rescue(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = RescuePerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_distinct_inputs(name, params):
-    prim = Rescue(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = RescuePerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
-    prim = Rescue(params)
-    data = [prim.F.random_element() for _ in range(prim.sponge.r // 2)]
-    assert len(prim.hash_sponge(data, variable_length=True)) == prim.sponge.d
-    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
-    assert len(prim.hash_sponge(data, variable_length=False)) == prim.sponge.d
+    P = RescuePerm(params)
+    H = RescueHash(P, params.sponge)
+    data = [P.F.random_element() for _ in range(params.sponge["r"] // 2)]
+    assert len(H.hash(data, input_len_fixed=False)) == H.sponge.d
+    data = [P.F.random_element() for _ in range(params.sponge["r"] * 3)]
+    assert len(H.hash(data, input_len_fixed=True)) == H.sponge.d
 
 # ---------------------------------------------------------------------------
 # 4.4 Algebraic: parameter generation
@@ -222,14 +224,14 @@ def test_vandermonde_mds_matrix_bls12_rescue():
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = Rescue(RESCUE_BLS12_T3)
+    P = RescuePerm(RESCUE_BLS12_T3)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
+        P.permute([P.F.zero()] * (P.t + 1))
 
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        RescueParams(p=101, t=3, r=2, c=1, d=1, toy=True)  # tiny field
+        RescueParams(p=101, t=3, sponge=dict(r=2, c=1, d=1), toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
@@ -237,4 +239,4 @@ def test_recommended_instance_no_warning(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("error", ParamRecommendationWarning)
         RescueParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
-                     r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                     sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))

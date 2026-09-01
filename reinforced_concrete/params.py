@@ -1,13 +1,5 @@
 # params.py
-# ---------------------------------------------------------------------------
-# Parameter definition for Reinforced Concrete: the ReinforcedConcreteParams class.
-#
-# ReinforcedConcreteParams is the single source of truth for an instance. It sanitizes 
-# user-facing parameters and expands them into a fully-specified instance that
-# the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper. Settings that depart from 
-# the recommended ones raise a ParamRecommendationWarning rather than an error.
-# ---------------------------------------------------------------------------
+# ReinforcedConcreteParams: the fully-specified parameter set for Reinforced Concrete (single source of truth per instance).
 
 # Structural imports
 from recommendations import recommend
@@ -21,7 +13,6 @@ from sage.all import GF, Integer, PolynomialRing, is_prime, previous_prime
 from utils.sampler import XOFFieldElementSampler
 from utils.lut import invert_LUT, mixed_radix_decompose
 from utils.matrix import map_nested, invert_matrix
-from utils.mode import SpongeCLE
 
 
 class ReinforcedConcreteParams:
@@ -39,10 +30,10 @@ class ReinforcedConcreteParams:
         M:         list[list[int]] = None,
         alpha_inv: int = None,
         rcons:     list[list[int]] = None,
-        # Sponge parameters (derived if not provided)
-        r:     int = None,
-        c:     int = None,
-        d:     int = None,
+        # Modes of operation: per-mode param dicts (or None). sponge=dict(r,c,d); comp stays
+        # None (Reinforced Concrete's 2-to-1 is the sponge tree-hash of the children).
+        sponge: dict = None,
+        comp:   dict = None,
         # Target security level (default 128 bits)
         kappa: int = 128,
         toy: bool = False,
@@ -62,9 +53,8 @@ class ReinforcedConcreteParams:
         M         : MDS matrix (txt); generated via _init_mat if not provided
         alpha_inv : alpha^{-1} mod (p-1); computed via _init_alpha_inv if not provided
         rcons     : (R+1)xt round constants; generated via _init_cons (SHAKE128) if not provided
-        r         : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
-        c         : capacity (number of inner state elements for sponge); derived if not provided
-        d         : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        sponge    : sponge params dict dict(r, c, d), or None for no sponge
+        comp      : compression params dict, or None (RC uses the sponge for compression)
         kappa     : target security level in bits (default 128)
         toy       : if True, recommendation-level checks warn instead of raising (default False)
         """
@@ -79,8 +69,8 @@ class ReinforcedConcreteParams:
         self.kappa = kappa
         self.toy = toy
 
-        # Sponge parameters
-        self.sponge = SpongeCLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+        # Modes of operation: per-mode param dicts (consumed by the mode functions).
+        self.sponge, self.comp = sponge, comp
 
         # Non-linear layers: Bricks
         self.alpha = alpha

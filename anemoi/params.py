@@ -1,13 +1,5 @@
 # params.py
-# ---------------------------------------------------------------------------
-# Parameter definition for Anemoi: the AnemoiParams class.
-#
-# AnemoiParams is the single source of truth for an instance. It sanitizes 
-# user-facing parameters and expands them into a fully-specified instance that
-# the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper. Settings that depart from 
-# the recommended ones raise a ParamRecommendationWarning rather than an error.
-# ---------------------------------------------------------------------------
+# AnemoiParams: the fully-specified parameter set for Anemoi (single source of truth per instance).
 
 # Structural imports
 from recommendations import recommend
@@ -20,7 +12,6 @@ from sage.all import GF, Integer
 # Custom imports
 from utils.complexities import gb_comp
 from utils.matrix import circulant, circulant_mds_matrix, is_mds, pht_matrix, dl_m33_52_matrix, dl_m46_83_matrix, map_nested, invert_matrix
-from utils.mode import SpongeHirose
 
 # Digits of pi, used to derive the round constants via an open butterfly.
 PI_0 = 1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679
@@ -46,6 +37,10 @@ CIRCULANT_MDS_ROWS = {
 ANEMOI_Mx = {2: pht_matrix, 3: dl_m33_52_matrix, 4: dl_m46_83_matrix}
 
 class AnemoiParams:
+    """Single instance spec for Anemoi, read by the permutation (AnemoiPerm) and the mode
+    functions (AnemoiHash / AnemoiPiHash / AnemoiCompress). Carries the permutation parameters
+    plus the per-mode parameter dicts `sponge` and `comp`; the permutation ignores them."""
+
     def __init__(
         self,
         p:         int,
@@ -56,10 +51,10 @@ class AnemoiParams:
         t:         int = None,
         R:         int = None,
         M:         list[list[int]] = None,
-        # Sponge parameters (derived if not provided)
-        r:         int = None,
-        c:         int = None,
-        d:         int = None,
+        # Modes of operation: per-mode parameter dicts, or None if the instance defines no
+        # such mode. sponge = dict(r=.., c=.., d=..); comp = dict(a=..) (Jive_a) / ...
+        sponge:    dict = None,
+        comp:      dict = None,
         # Target security level (default 128 bits)
         kappa:     int = 128,
         # Toy instance switch: warns instead of raising on recommendation-level checks
@@ -76,15 +71,14 @@ class AnemoiParams:
         t         : state size (must be even); alternative to l, specify at least one of the two
         R         : number of rounds; derived via _init_rounds if not provided
         M         : lxl MDS matrix for the linear layer; generated via _init_mat if not provided
-        r         : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
-        c         : capacity (number of inner state elements for sponge); derived if not provided
-        d         : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        sponge    : sponge params dict dict(r, c, d), or None for no sponge
+        comp      : compression params dict (e.g. dict(a=2) for Jive_2), or None
         kappa     : target security level in bits (default 128)
         toy       : if True, recommendation-level checks warn instead of raising (default False)
         """
 
         # Input sanitization
-        AnemoiParams._input_sanitization(SimpleNamespace(**{k: v for k, v in locals().items() if k != "self"}))
+        self._input_sanitization(SimpleNamespace(**{k: v for k, v in locals().items() if k != "self"}))
 
         # General settings (reconcile the state size: l columns, t = 2*l branches)
         self.p = p
@@ -94,8 +88,9 @@ class AnemoiParams:
         self.kappa = kappa
         self.toy = toy
 
-        # Sponge parameters
-        self.sponge = SpongeHirose(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+        # Modes of operation: per-mode param dicts (consumed by the mode functions, not the
+        # permutation). None means the instance does not define that mode.
+        self.sponge, self.comp = sponge, comp
 
         # Non-linear layer (open Flystel)
         self.alpha = alpha if alpha is not None else self._init_alpha()
@@ -174,7 +169,6 @@ class AnemoiParams:
             raise ValueError(f"C and D must have one row per round: expected {self.R}, got {len(self.C)} and {len(self.D)}")
         if any(len(row) != self.l for row in self.C) or any(len(row) != self.l for row in self.D):
             raise ValueError(f"each C and D row must hold {self.l} elements")
-        # TODO make sure t and sponge.t are the same 
 
     # ---------------------------------------------------------------------------
     # Derivation helpers (defaults for the optional parameters)

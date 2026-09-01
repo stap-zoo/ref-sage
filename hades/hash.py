@@ -1,19 +1,12 @@
 # hash.py
-# ---------------------------------------------------------------------------
-# Hades family: the abstract HadesLikePermutation and its concrete Poseidon /
-# Poseidon2 / Neptune permutations, plus the hash modes built on them.
-#
-# Each class is constructed from a fully-specified params object.
-# ---------------------------------------------------------------------------
+# Hades: HadesLikePermutation, PoseidonPerm, Poseidon2Perm, NeptunePerm (permutation) and its mode functions (PoseidonHash, Poseidon2Hash, NeptuneHash, Poseidon2Compress).
 
 from utils.matrix import matvecmul, vecadd, vecsub
-from utils.mode import compress_davies_meyer
-import warnings
-from recommendations import ModeRecommendationWarning
+from utils.primitive import Permutation, HashFunction, CompressionFunction
 from hades.params import PoseidonParams, Poseidon2Params, NeptuneParams
 
 
-class HadesLikePermutation:
+class HadesLikePermutation(Permutation):
     """Abstract Hades-strategy permutation: external (full) rounds, then internal (partial)
     rounds, then external rounds, around a state of t branches. Each round is ARK -> S-box ->
     matrix (round constant rcons[r] added before the S-box).
@@ -29,12 +22,9 @@ class HadesLikePermutation:
     """
 
     def __init__(self, params):
-        self.F = params.F
-        self.to_field = params.to_field
-        self.from_field = params.from_field
-        self.t = params.t
+        super().__init__(params)  # F, to_field, from_field, t, p, kappa, toy
         self.alpha = params.alpha
-        self.u = params.u 
+        self.u = params.u
 
         # Rounds
         self.R = params.R
@@ -53,9 +43,6 @@ class HadesLikePermutation:
         # S-box). Variants that whiten the output read the trailing row in _post_rounds.
         self.rcons = params.rcons
 
-        # Hash modes
-        self.sponge = params.sponge
-        
     # ---------------------------------------------------------------------------
     # Component functions
     # ---------------------------------------------------------------------------
@@ -114,7 +101,7 @@ class HadesLikePermutation:
     # Permutation
     # ---------------------------------------------------------------------------
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -127,7 +114,7 @@ class HadesLikePermutation:
 
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -140,54 +127,19 @@ class HadesLikePermutation:
 
         return self._pre_rounds_inv(state)
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
-
-    def compress_2_to_1(self, x1: list, x2: list) -> list:
-        """Davies-Meyer 2-to-1 compression, defined when t == 2 * digest size."""
-        d = self.sponge.d # TODO replace with compression digest (usually the same)
-        if self.t != 2 * d:
-            raise ValueError(f"Compression mode not defined for state size {self.t} and digest size {d}.")
-        if len(x1) != d or len(x2) != d:
-            raise ValueError(f"Invalid input sizes. Expected ({d},{d}), got ({len(x1)},{len(x2)})")
-        return compress_davies_meyer(
-            perm=self.permutation,
-            x_m=x1,
-            x_c=x2,
-            digest_size=d,
-            to_field=self.to_field,
-        )
-
-    def hash_sponge(self, data: list) -> list:
-        # NOTE: original Poseidon additionally packs use-case (variable/fixed), message length, and 
-        # Merkle arity into hi/lo parts of one ~256-bit capacity element via a 2^64 offset. 
-        # This does not match small fields (Goldilocks/Mersenne). This is a SIMPLIFIED scheme: bare 
-        # input length as the tag. Injective across lengths, not spec vectors.
-        return self.sponge.hash(self.permutation, data, input_len_fixed=True)
-
 
 # ---------------------------------------------------------------------------
 # Concrete permutations
 # ---------------------------------------------------------------------------
 
-class Poseidon(HadesLikePermutation):
+class PoseidonPerm(HadesLikePermutation):
     """Poseidon: a single MDS matrix for external and internal rounds, power-map S-box,
     full-width round constants before each S-box. No leading matrix."""
 
     def __init__(self, params: PoseidonParams):
         super().__init__(params)
 
-    def compress_2_to_1(self, x1: list, x2: list) -> list:
-        warnings.warn("Poseidon does not define a compression mode; using the generic "
-            "truncated-feed-forward construction. This is an unanalyzed extension, "
-            "not part of the Poseidon specification.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return super().compress_2_to_1(x1, x2)
-
-class Poseidon2(HadesLikePermutation):
+class Poseidon2Perm(HadesLikePermutation):
     """Poseidon2: a leading external matrix, distinct external/internal matrices, power-map
     S-box, internal-round constants on branch 0 only. Leading external matrix."""
 
@@ -200,7 +152,7 @@ class Poseidon2(HadesLikePermutation):
     def _pre_rounds_inv(self, state: list) -> list:
         return matvecmul(self.M_ext_inv, state)
 
-class Neptune(HadesLikePermutation):
+class NeptunePerm(HadesLikePermutation):
     """Neptune: external rounds apply a quadratic pair-wise S-box (open-Flystel map with
     alpha = beta = 1 and constant gamma) instead of the power map; internal rounds and the
     linear layers follow the Hades template. A leading external matrix is applied up front;
@@ -277,11 +229,27 @@ class Neptune(HadesLikePermutation):
                 out += [x1, x2]
             return out
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
 
-    def compress_2_to_1(self, x1: list, x2: list) -> list:
-        msg = "Neptune does not define a compression mode; using truncated-feed-forward construction."
-        warnings.warn(msg, ModeRecommendationWarning, stacklevel=2)
-        return super().compress_2_to_1(x1, x2)
+# ---------------------------------------------------------------------------
+# Hash / compression functions
+#
+# The permutations above are JUST permutations. All three variants use the length-encoded
+# sponge; only Poseidon2 defines a (truncation / Davies-Meyer) compression, per the design.
+# Mode functions are perm-agnostic and take a permutation instance:
+#     P = Poseidon2Perm(params)
+#     H = Poseidon2Hash(P, params.sponge)      # SpongeLE (fixed-length input)
+#     C = Poseidon2Compress(P, params.comp)    # 2-to-1 truncation (t = 2d -> d)
+# Poseidon / Neptune instances set comp=None (no compression).
+# ---------------------------------------------------------------------------
+
+class PoseidonHash(HashFunction):
+    SPONGE_KIND = "le"
+
+class Poseidon2Hash(HashFunction):
+    SPONGE_KIND = "le"
+
+class NeptuneHash(HashFunction):
+    SPONGE_KIND = "le"
+
+class Poseidon2Compress(CompressionFunction):
+    COMP_KIND = "trunc"       # 2-to-1 truncation / Davies-Meyer (comp=dict(a=2))

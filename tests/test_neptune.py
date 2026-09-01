@@ -15,7 +15,7 @@ import warnings
 
 import pytest
 
-from hades.hash import Neptune
+from hades.hash import NeptunePerm, NeptuneHash
 from hades.params import NeptuneParams
 from hades.instances import (
     NEPTUNE_BN254_T4,
@@ -86,10 +86,10 @@ KAT_IDS = [
 
 @pytest.mark.parametrize("name,params,kat", KAT_CASES, ids=KAT_IDS)
 def test_permutation_kat(name, params, kat):
-    prim = Neptune(params)
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.permutation(inp)
-    assert [int(prim.from_field(x)) for x in out] == kat["output"]
+    P = NeptunePerm(params)
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = P.permute(inp)
+    assert [int(P.from_field(x)) for x in out] == kat["output"]
 
 
 # ---------------------------------------------------------------------------
@@ -123,24 +123,24 @@ def test_internal_matrix_is_j_plus_diag(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_roundtrip(name, params):
-    prim = Neptune(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
-    assert prim.permutation(prim.permutation_inv(inp)) == inp
+    P = NeptunePerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
+    assert P.permute(P.permute_inv(inp)) == inp
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_layer_roundtrip(name, params):
     # Each component layer must be undone by its _inv partner. Use a representative
     # external and internal round index.
-    prim = Neptune(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    ext_idx, int_idx = 0, prim.R_ext_beg
+    P = NeptunePerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    ext_idx, int_idx = 0, P.R_ext_beg
     for r in [ext_idx, int_idx]:
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+        assert P.constant_addition_inv(P.constant_addition(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 
 # ---------------------------------------------------------------------------
@@ -149,28 +149,29 @@ def test_layer_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_deterministic(name, params):
-    prim = Neptune(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = NeptunePerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_distinct_inputs(name, params):
-    prim = Neptune(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = NeptunePerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_sponge_output_size(name, params):
-    prim = Neptune(params)
-    data = [prim.F.random_element() for _ in range(prim.sponge.r)]
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
-    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    P = NeptunePerm(params)
+    H = NeptuneHash(P, params.sponge)
+    data = [P.F.random_element() for _ in range(params.sponge["r"])]
+    assert len(H.hash(data, input_len_fixed=True)) == H.sponge.d
+    data = [P.F.random_element() for _ in range(params.sponge["r"] * 3)]
+    assert len(H.hash(data, input_len_fixed=True)) == H.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -178,19 +179,19 @@ def test_sponge_output_size(name, params):
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = Neptune(NEPTUNE_GOLDILOCKS_T8)
+    P = NeptunePerm(NEPTUNE_GOLDILOCKS_T8)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
+        P.permute([P.F.zero()] * (P.t + 1))
 
 
 def test_odd_state_size_rejected():
     with pytest.raises(ValueError):
-        NeptuneParams(p=NEPTUNE_GOLDILOCKS_T8.p, t=3, alpha=7, R_ext=2, R_int=2, r=2, c=1, d=1)
+        NeptuneParams(p=NEPTUNE_GOLDILOCKS_T8.p, t=3, alpha=7, R_ext=2, R_int=2, sponge=dict(r=2, c=1, d=1))
 
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        NeptuneParams(p=101, t=4, alpha=3, R_ext=2, R_int=2, r=2, c=2, d=2, toy=True)  # tiny field
+        NeptuneParams(p=101, t=4, alpha=3, R_ext=2, R_int=2, sponge=dict(r=2, c=2, d=2), toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
@@ -199,12 +200,12 @@ def test_recommended_instance_no_warning(name, params):
         warnings.simplefilter("error", ParamRecommendationWarning)
         NeptuneParams(p=params.p, t=params.t, alpha=params.alpha,
                       R_ext=params.R_ext, R_int=params.R_int,
-                      r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                      sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
 
 
 def test_constants_reproducible():
     # Same parameters -> identical derived constants and matrices.
-    kwargs = dict(p=NEPTUNE_GOLDILOCKS_T8.p, t=8, alpha=7, R_ext=6, R_int=38, r=4, c=4, d=4)
+    kwargs = dict(p=NEPTUNE_GOLDILOCKS_T8.p, t=8, alpha=7, R_ext=6, R_int=38, sponge=dict(r=4, c=4, d=4))
     a = NeptuneParams(**kwargs)
     b = NeptuneParams(**kwargs)
     assert a.rcons == b.rcons

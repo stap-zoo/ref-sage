@@ -14,7 +14,7 @@ import warnings
 
 import pytest
 
-from hades.hash import Poseidon
+from hades.hash import PoseidonPerm, PoseidonHash
 from hades.params import PoseidonParams
 from hades.instances import (
     POSEIDON_BN254_T3,
@@ -88,10 +88,10 @@ KAT_IDS = [
 
 @pytest.mark.parametrize("name,params,kat", KAT_CASES, ids=KAT_IDS)
 def test_permutation_kat(name, params, kat):
-    prim = Poseidon(params)
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.permutation(inp)
-    assert [int(prim.from_field(x)) for x in out] == kat["output"]
+    P = PoseidonPerm(params)
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = P.permute(inp)
+    assert [int(P.from_field(x)) for x in out] == kat["output"]
 
 
 # ---------------------------------------------------------------------------
@@ -100,25 +100,25 @@ def test_permutation_kat(name, params, kat):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_roundtrip(name, params):
-    prim = Poseidon(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
-    assert prim.permutation(prim.permutation_inv(inp)) == inp
+    P = PoseidonPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
+    assert P.permute(P.permute_inv(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_layer_roundtrip(name, params):
     # Each component layer must be undone by its _inv partner. Use a representative
     # external and internal round index.
-    prim = Poseidon(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    ext_idx, int_idx = 0, prim.R_ext_beg
+    P = PoseidonPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    ext_idx, int_idx = 0, P.R_ext_beg
     for r in [ext_idx, int_idx]:
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+        assert P.constant_addition_inv(P.constant_addition(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 
 # ---------------------------------------------------------------------------
@@ -127,30 +127,31 @@ def test_layer_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_deterministic(name, params):
-    prim = Poseidon(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = PoseidonPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_distinct_inputs(name, params):
-    prim = Poseidon(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = PoseidonPerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_sponge_output_size(name, params):
-    prim = Poseidon(params)
+    P = PoseidonPerm(params)
+    H = PoseidonHash(P, params.sponge)
 
-    data = [prim.F.random_element() for _ in range(prim.sponge.r)]
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    data = [P.F.random_element() for _ in range(params.sponge["r"])]
+    assert len(H.hash(data, input_len_fixed=True)) == H.sponge.d
 
-    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    data = [P.F.random_element() for _ in range(params.sponge["r"] * 3)]
+    assert len(H.hash(data, input_len_fixed=True)) == H.sponge.d
 
 
 
@@ -408,7 +409,7 @@ def test_generated_matches_reference(name):
 def test_circom_constants_match_reference():
     """The circom version reproduces the first round-constant row published in circomlib."""
     params = PoseidonParams(p=BN254_SCALAR.p, t=3, alpha=5, R_ext=8, R_int=57,
-                            r=2, c=1, d=1, version="circom")
+                            sponge=dict(r=2, c=1, d=1), version="circom")
     assert [int(params.from_field(x)) for x in params.rcons[0]] == CIRCOM_BN254_T3_RC_ROW0
 
 
@@ -417,20 +418,20 @@ def test_circom_constants_match_reference():
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = Poseidon(POSEIDON_BN254_T3)
+    P = PoseidonPerm(POSEIDON_BN254_T3)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
+        P.permute([P.F.zero()] * (P.t + 1))
 
 
 def test_alpha_must_be_permutation():
     # An explicit alpha not coprime with p-1 must be rejected by params.
     with pytest.raises(ValueError):
-        PoseidonParams(p=BN254_SCALAR.p, t=3, alpha=2, R_ext=2, R_int=2, r=2, c=1, d=1)
+        PoseidonParams(p=BN254_SCALAR.p, t=3, alpha=2, R_ext=2, R_int=2, sponge=dict(r=2, c=1, d=1))
 
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        PoseidonParams(p=101, t=3, alpha=3, R_ext=2, R_int=2, r=2, c=1, d=1, toy=True)  # tiny field
+        PoseidonParams(p=101, t=3, alpha=3, R_ext=2, R_int=2, sponge=dict(r=2, c=1, d=1), toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
@@ -439,13 +440,13 @@ def test_recommended_instance_no_warning(name, params):
         warnings.simplefilter("error", ParamRecommendationWarning)
         PoseidonParams(p=params.p, t=params.t, alpha=params.alpha,
                        R_ext=params.R_ext, R_int=params.R_int,
-                       r=params.sponge.r, c=params.sponge.c, d=params.sponge.d,
+                       sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]),
                        version=params.version, mds_strategy=params.mds_strategy)
 
 
 def test_constants_reproducible():
     # Same parameters -> identical derived constants and matrix.
-    kwargs = dict(p=BN254_SCALAR.p, t=3, alpha=5, R_ext=8, R_int=57, r=2, c=1, d=1)
+    kwargs = dict(p=BN254_SCALAR.p, t=3, alpha=5, R_ext=8, R_int=57, sponge=dict(r=2, c=1, d=1))
     a = PoseidonParams(**kwargs)
     b = PoseidonParams(**kwargs)
     assert a.rcons == b.rcons

@@ -14,7 +14,7 @@ import warnings
 
 import pytest
 
-from griffin.hash import Griffin
+from griffin.hash import GriffinHash, GriffinPerm
 from griffin.params import GriffinParams
 from griffin.instances import (
     GRIFFIN_BN254_T3,
@@ -108,10 +108,10 @@ KAT_IDS = [
 
 @pytest.mark.parametrize("name,params,kat", KAT_CASES, ids=KAT_IDS)
 def test_permutation_kat(name, params, kat):
-    prim = Griffin(params)
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.permutation(inp)
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    P = GriffinPerm(params)
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = P.permute(inp)
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 
 # ---------------------------------------------------------------------------
@@ -120,22 +120,22 @@ def test_permutation_kat(name, params, kat):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_roundtrip(name, params):
-    prim = Griffin(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = GriffinPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_layer_roundtrip(name, params):
     # Each component layer must be undone by its _inv partner, for every round.
-    prim = Griffin(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(prim.R):
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+    P = GriffinPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(P.R):
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+        assert P.constant_addition_inv(P.constant_addition(inp, r), r) == inp
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 
 # ---------------------------------------------------------------------------
@@ -144,30 +144,31 @@ def test_layer_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_deterministic(name, params):
-    prim = Griffin(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = GriffinPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_distinct_inputs(name, params):
-    prim = Griffin(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = GriffinPerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
-    prim = Griffin(params)
-    
-    data = [prim.F.random_element() for _ in range(prim.sponge.r)]
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    P = GriffinPerm(params)
+    H = GriffinHash(P, params.sponge)
 
-    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    data = [P.F.random_element() for _ in range(params.sponge["r"])]
+    assert len(H.hash(data, input_len_fixed=True)) == H.sponge.d
+
+    data = [P.F.random_element() for _ in range(params.sponge["r"] * 3)]
+    assert len(H.hash(data, input_len_fixed=True)) == H.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -191,14 +192,14 @@ AFFINE_CASES = [
     ids=[f"{field_name} with t={t}, alpha={a}" for field_name, _, a, t in AFFINE_CASES],
 )
 def test_affine(field_name, field, alpha, t):
-    params = GriffinParams(p=field.p, t=t, alpha=alpha, R=1, c=1, d=1, kappa=field.bits // 2) # capacity/digest holds 2*kappa bits
-    prim = Griffin(params)
+    params = GriffinParams(p=field.p, t=t, alpha=alpha, R=1, sponge=dict(c=1, d=1), kappa=field.bits // 2) # capacity/digest holds 2*kappa bits
+    P = GriffinPerm(params)
 
-    inp = [prim.F.random_element() for _ in range(t)]
+    inp = [P.F.random_element() for _ in range(t)]
 
-    expected = matvecmul(prim.M, inp)
+    expected = matvecmul(P.M, inp)
     r = params.R - 1
-    actual = prim.constant_addition(prim.linear_layer(inp, r), r)  # last round: round constant is zero
+    actual = P.constant_addition(P.linear_layer(inp, r), r)  # last round: round constant is zero
     assert actual == expected
 
 
@@ -210,17 +211,17 @@ def test_affine(field_name, field, alpha, t):
 def test_generated_matches_instance(name, params):
     # Rebuilding the params without M / constants must reproduce the pinned instance.
     derived = GriffinParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
-                            r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                            sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
     assert derived.M == params.M
     assert derived.rcons == params.rcons
     assert derived.coeffs_G == params.coeffs_G
 
 
-@pytest.mark.skip(reason="_init_rounds is a stub (round number derivation not implemented for Griffin)")
+@pytest.mark.skip(reason="_init_rounds is implemented but over-estimates the pinned reference rounds (derived = pinned + 1..2); the paper's exact formula/margin is not matched yet")
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_rounds_derivation_matches_instance(name, params):
     derived = GriffinParams(p=params.p, t=params.t, alpha=params.alpha,
-                            r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # R omitted -> _init_rounds
+                            sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))  # R omitted -> _init_rounds
     assert derived.R == params.R
 
 
@@ -229,14 +230,14 @@ def test_rounds_derivation_matches_instance(name, params):
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = Griffin(GRIFFIN_BN254_T3)
+    P = GriffinPerm(GRIFFIN_BN254_T3)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
+        P.permute([P.F.zero()] * (P.t + 1))
 
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        GriffinParams(p=101, t=3, alpha=3, R=4, r=2, c=1, d=1, toy=True)  # tiny field
+        GriffinParams(p=101, t=3, alpha=3, R=4, sponge=dict(r=2, c=1, d=1), toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
@@ -244,13 +245,13 @@ def test_recommended_instance_no_warning(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("error", ParamRecommendationWarning)
         GriffinParams(p=params.p, t=params.t, alpha=params.alpha, R=params.R,
-                      r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                      sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
 
 
 def test_constants_reproducible():
     # Same parameters -> identical derived constants and matrix.
-    a = GriffinParams(p=BN254_SCALAR.p, t=3, alpha=5, R=12, r=2, c=1, d=1)
-    b = GriffinParams(p=BN254_SCALAR.p, t=3, alpha=5, R=12, r=2, c=1, d=1)
+    a = GriffinParams(p=BN254_SCALAR.p, t=3, alpha=5, R=12, sponge=dict(r=2, c=1, d=1))
+    b = GriffinParams(p=BN254_SCALAR.p, t=3, alpha=5, R=12, sponge=dict(r=2, c=1, d=1))
     assert a.rcons == b.rcons
     assert a.coeffs_G == b.coeffs_G
     assert a.M == b.M

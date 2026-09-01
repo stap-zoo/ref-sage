@@ -1,14 +1,5 @@
 # params.py
-# ---------------------------------------------------------------------------
-# Parameter definition for GMiMC: the GMiMCParams class and its subclass
-# GMiMC2Params.
-#
-# GMiMCParams is the single source of truth for an instance. It sanitizes 
-# user-facing parameters and expands them into a fully-specified instance that
-# the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper. Settings that depart from 
-# the recommended ones raise a ParamRecommendationWarning rather than an error.
-# ---------------------------------------------------------------------------
+# GMiMCParams, GMiMC2Params: the fully-specified parameter set for GMiMC (single source of truth per instance).
 
 # Structural imports
 from recommendations import recommend
@@ -21,7 +12,6 @@ from sage.all import GF, Integer
 # Custom imports
 from utils.matrix import simple_circulant_matrix, map_nested, invert_matrix
 from utils.sampler import XOFFieldElementSampler
-from utils.mode import SpongeLE
 
 
 class GMiMCParams:
@@ -33,10 +23,9 @@ class GMiMCParams:
         M:           list[list[int]] = None,
         alpha:       int = None,
         rcons:       list[int] = None,
-        # Sponge parameters (derived if not provided)
-        r:           int = None,
-        c:           int = None,
-        d:           int = None,
+        # Mode-of-operation params: sponge = dict(r, c, d); comp = dict(a=2) (GMiMC2 only) or None.
+        sponge:      dict = None,
+        comp:        dict = None,
         # Target security level (default 128 bits)
         kappa:       int = 128,
         toy:         bool = False,
@@ -50,9 +39,8 @@ class GMiMCParams:
         M     : matrix (txt); generated via _init_mat (cyclic-shift permutation matrix) if not provided
         alpha : exponent of the power-map S-box (its degree)
         rcons : R affine round constants; generated via _init_cons if not provided
-        r     : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
-        c     : capacity (number of inner state elements for sponge); derived if not provided
-        d     : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        sponge: sponge params dict dict(r, c, d), or None for no sponge
+        comp  : compression params dict (e.g. dict(a=2)), or None
         kappa : target security level in bits (default 128)
         toy   : if True, recommendation-level checks warn instead of raising (default False)
         """
@@ -67,8 +55,8 @@ class GMiMCParams:
         self.kappa = kappa
         self.toy = toy
 
-        # Sponge parameters
-        self.sponge = SpongeLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+        # Modes of operation: per-mode param dicts (consumed by the mode functions).
+        self.sponge, self.comp = sponge, comp
 
         # Non-linear layer
         self.alpha = alpha if alpha is not None else self._init_alpha()
@@ -172,10 +160,9 @@ class GMiMC2Params(GMiMCParams):
         M_IO:        list[list[int]] = None,
         alpha:       int = 2,
         rcons:       list[int] = None,
-        # Sponge parameters (derived if not provided)
-        r:           int = None,
-        c:           int = None,
-        d:           int = None,
+        # Mode-of-operation params: sponge = dict(r, c, d); comp = dict(a=2) (GMiMC2 only) or None.
+        sponge:      dict = None,
+        comp:        dict = None,
         # Target security level (default 128 bits)
         kappa:       int = 128,
         toy:         bool = False,
@@ -189,9 +176,8 @@ class GMiMC2Params(GMiMCParams):
         M     : matrix (txt); generated via _init_mat (cyclic-shift permutation matrix) if not provided
         alpha : exponent of the power-map S-box (its degree)
         rcons : R affine round constants; generated via _init_cons if not provided
-        r     : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
-        c     : capacity (number of inner state elements for sponge); derived if not provided
-        d     : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        sponge: sponge params dict dict(r, c, d), or None for no sponge
+        comp  : compression params dict (e.g. dict(a=2)), or None
         kappa : target security level in bits (default 128)
         toy   : if True, recommendation-level checks warn instead of raising (default False)
         """
@@ -202,13 +188,11 @@ class GMiMC2Params(GMiMCParams):
         self.p = p
         self.F = GF(p)
         self.t = t
-        self.r = r
-        self.c = c
         self.kappa = kappa
         self.toy = toy
 
-        # Sponge parameters
-        self.sponge = SpongeLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+        # Modes of operation: per-mode param dicts (consumed by the mode functions).
+        self.sponge, self.comp = sponge, comp
 
         # Non-linear layer
         self.alpha = alpha
@@ -273,12 +257,12 @@ class GMiMC2Params(GMiMCParams):
         mat_io = [[0 for _ in range(self.t)] for _ in range(self.t)]
         for i in range(0, self.t):
                 mat_io[i][i] += 1
-        if self.c == 1:
+        if self.sponge["c"] == 1:
             pass
-        elif (self.c > 1) and (self.c == self.r):
+        elif (self.sponge["c"] > 1) and (self.sponge["c"] == self.sponge["r"]):
             for i in range(0, self.t):
                 mat_io[i][(i + self.t // 2) % self.t] += 2
-        elif (self.c > 1) and (self.t % 3 == 0) and (self.c == self.t // 3) and (self.r == 2 * self.t // 3):
+        elif (self.sponge["c"] > 1) and (self.t % 3 == 0) and (self.sponge["c"] == self.t // 3) and (self.sponge["r"] == 2 * self.t // 3):
             for i in range(0, self.t):
                 mat_io[i][(i + self.t // 3) % self.t] += 2
                 mat_io[i][(i + self.t // 2) % self.t] += 2

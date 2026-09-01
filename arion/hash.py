@@ -1,23 +1,17 @@
 # hash.py
-# ---------------------------------------------------------------------------
-# Arion: the permutation (round function) and the hash modes built on it.
-#
-# Constructed from a fully-specified ArionParams object. 
-# ---------------------------------------------------------------------------
+# Arion: ArionPerm (permutation) and its mode functions (ArionHash, ArionCompress).
 
 from arion.params import ArionParams
 from utils.matrix import matvecmul, vecadd, vecsub
+from utils.primitive import Permutation, HashFunction, CompressionFunction
 
-class Arion:
+class ArionPerm(Permutation):
     # ---------------------------------------------------------------------------
     # Initialization
     # ---------------------------------------------------------------------------
 
     def __init__(self, params: ArionParams):
-        self.F = params.F
-        self.to_field = params.to_field
-        self.from_field = params.from_field
-        self.t = params.t
+        super().__init__(params)  # F, to_field, from_field, t, p, kappa, toy
 
         # Rounds
         self.R = params.R
@@ -34,9 +28,6 @@ class Arion:
         self.M = params.M
         self.M_inv = params.M_inv
         self.rcons = params.rcons
-
-        # Hash modes
-        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -116,7 +107,7 @@ class Arion:
     # Permutation
     # ---------------------------------------------------------------------------
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -127,7 +118,7 @@ class Arion:
             state = self.constant_addition(state, r)
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -138,9 +129,21 @@ class Arion:
             state = self.nonlinear_layer_inv(state, r)
         return self._pre_rounds_inv(state)
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
 
-    def hash_sponge(self, data: list) -> list:
-        return self.sponge.hash(self.permutation, data)
+# ---------------------------------------------------------------------------
+# Hash / compression functions
+#
+# ArionPerm above is JUST the permutation. Each mode wraps a permutation:
+#     P = ArionPerm(params)
+#     H = ArionHash(P, params.sponge)     # conditional-length-encoded sponge
+#     C = ArionCompress(P, params.comp)   # truncation compression
+# The truncation compression is a general M*(P(x)+x); the arity/digest comes from the comp
+# dict. A 2-to-1 (dict(a=2)) needs even t, so the t=3 instance sets comp=None (no compression);
+# an even-t instance would set comp=dict(a=2) (or comp=dict(d=..) for an explicit digest).
+# ---------------------------------------------------------------------------
+
+class ArionHash(HashFunction):
+    SPONGE_KIND = "cle"       # conditional length-encoded sponge
+
+class ArionCompress(CompressionFunction):
+    COMP_KIND = "trunc"       # truncation compression M*(P(x)+x)

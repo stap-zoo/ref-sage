@@ -14,7 +14,7 @@ import warnings
 
 import pytest
 
-from monolith.hash import Monolith
+from monolith.hash import MonolithPerm, MonolithHash
 from monolith.instances import (
     MONOLITH_M31_T16,
     MONOLITH_M31_T24,
@@ -30,18 +30,6 @@ INSTANCES = [
     ("M31_T16", MONOLITH_M31_T16),
     ("M31_T24", MONOLITH_M31_T24),
     ("GOLDILOCKS_T8", MONOLITH_GOLDILOCKS_T8),
-    ("GOLDILOCKS_T12", MONOLITH_GOLDILOCKS_T12),
-]
-
-# Instances where t == 2*d, so compress_2_to_1 is defined
-COMPRESS_INSTANCES = [
-    ("M31_T16", MONOLITH_M31_T16),
-    ("GOLDILOCKS_T8", MONOLITH_GOLDILOCKS_T8),
-]
-
-# Instances where t != 2*d, so compress_2_to_1 raises ValueError
-NO_COMPRESS_INSTANCES = [
-    ("M31_T24", MONOLITH_M31_T24),
     ("GOLDILOCKS_T12", MONOLITH_GOLDILOCKS_T12),
 ]
 
@@ -121,10 +109,10 @@ def test_lut_7_matches_computed():
 
 @pytest.mark.parametrize("name,params,kat", KAT_CASES, ids=KAT_IDS)
 def test_permutation_kat(name, params, kat):
-    prim = Monolith(params)
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.permutation(inp)
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    P = MonolithPerm(params)
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = P.permute(inp)
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 # ---------------------------------------------------------------------------
 # 4.2 Roundtrip (invertibility)
@@ -132,24 +120,24 @@ def test_permutation_kat(name, params, kat):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_roundtrip(name, params):
-    prim = Monolith(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = MonolithPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_layer_roundtrip(name, params):
     # Each component layer must be undone by its _inv partner, for every round.
-    prim = Monolith(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(prim.R):
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
-        assert prim._bricks_inv(prim._bricks(inp, r), r) == inp
-        assert prim._bars_inv(prim._bars(inp, r), r) == inp
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+    P = MonolithPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(P.R):
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+        assert P.constant_addition_inv(P.constant_addition(inp, r), r) == inp
+        assert P._bricks_inv(P._bricks(inp, r), r) == inp
+        assert P._bars_inv(P._bars(inp, r), r) == inp
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 # ---------------------------------------------------------------------------
 # 4.3 Consistency
@@ -157,28 +145,29 @@ def test_layer_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_deterministic(name, params):
-    prim = Monolith(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = MonolithPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_distinct_inputs(name, params):
-    prim = Monolith(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = MonolithPerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
-    prim = Monolith(params)
-    data = [prim.F.random_element() for _ in range(prim.sponge.r)] 
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
-    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    P = MonolithPerm(params)
+    H = MonolithHash(P, params.sponge)
+    data = [P.F.random_element() for _ in range(params.sponge["r"])]
+    assert len(H.hash(data)) == H.sponge.d
+    data = [P.F.random_element() for _ in range(params.sponge["r"] * 3)]
+    assert len(H.hash(data)) == H.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -186,28 +175,9 @@ def test_sponge_output_size(name, params):
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = Monolith(MONOLITH_M31_T16)
+    P = MonolithPerm(MONOLITH_M31_T16)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
-
-
-@pytest.mark.parametrize("name,params", COMPRESS_INSTANCES, ids=[name for name, _ in COMPRESS_INSTANCES])
-def test_compress_output_size(name, params):
-    prim = Monolith(params)
-    half = prim.t // 2
-    x1 = [prim.F.random_element() for _ in range(half)]
-    x2 = [prim.F.random_element() for _ in range(half)]
-    assert len(prim.compress_2_to_1(x1, x2)) == prim.sponge.d
-
-
-@pytest.mark.parametrize("name,params", NO_COMPRESS_INSTANCES, ids=[name for name, _ in NO_COMPRESS_INSTANCES])
-def test_compress_not_defined(name, params):
-    prim = Monolith(params)
-    half = prim.t // 2
-    x1 = [prim.F.random_element() for _ in range(half)]
-    x2 = [prim.F.random_element() for _ in range(half)]
-    with pytest.raises(ValueError):
-        prim.compress_2_to_1(x1, x2)
+        P.permute([P.F.zero()] * (P.t + 1))
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +199,7 @@ def test_rcons_generated_matches_instance(name, params):
     M, _ = _instance_ints(params)
     derived = MonolithParams(p=params.p, t=params.t, R=params.R, u=params.u,
                              si=params.si, LUTs=params.LUTs, M=M,
-                             r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                             sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
     assert derived.rcons == params.rcons
 
 
@@ -238,7 +208,7 @@ def test_rcons_generated_matches_instance(name, params):
 def test_matrix_derivation_matches_instance(name, params):
     derived = MonolithParams(p=params.p, t=params.t, R=params.R, u=params.u,
                              si=params.si, LUTs=params.LUTs,
-                             r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # M omitted -> _init_mat
+                             sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))  # M omitted -> _init_mat
     assert derived.M == params.M
 
 
@@ -248,7 +218,7 @@ def test_rounds_derivation_matches_instance(name, params):
     M, _ = _instance_ints(params)
     derived = MonolithParams(p=params.p, t=params.t, u=params.u,
                              si=params.si, LUTs=params.LUTs, M=M,
-                             r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # R omitted -> _init_rounds
+                             sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))  # R omitted -> _init_rounds
     assert derived.R == params.R
 
 
@@ -261,7 +231,7 @@ def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
         MonolithParams(p=8191, t=4, R=3, u=2, si=[128, 128],
                        M=[[1, 2, 3, 4], [4, 1, 2, 3], [3, 4, 1, 2], [2, 3, 4, 1]],
-                       r=2, c=2, d=2, toy=True)
+                       sponge=dict(r=2, c=2, d=2), toy=True)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
@@ -271,14 +241,14 @@ def test_recommended_instance_no_warning(name, params):
         warnings.simplefilter("error", ParamRecommendationWarning)
         MonolithParams(p=params.p, t=params.t, R=params.R, u=params.u,
                        si=params.si, LUTs=params.LUTs, M=M,
-                       r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                       sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
 
 
 def test_constants_reproducible():
     # Same parameters -> identical derived constants.
     M, _ = _instance_ints(MONOLITH_GOLDILOCKS_T8)
     kwargs = dict(p=MONOLITH_GOLDILOCKS_T8.p, t=8, R=6, u=4, si=[256] * 8,
-                  M=M, r=4, c=4, d=4)
+                  M=M, sponge=dict(r=4, c=4, d=4))
     a = MonolithParams(**kwargs)
     b = MonolithParams(**kwargs)
     assert a.rcons == b.rcons

@@ -1,11 +1,5 @@
 # instances.py
-# ---------------------------------------------------------------------------
-# Concrete, named parameter sets for Griffin.
-#
-# Each entry is a ready-to-use GriffinParams instance pinned to a specific field
-# from utils/field.py, so every consumer (permutation, hash, tests) agrees on the
-# exact same parameters. Naming convention: GRIFFIN_<FIELD>_<VARIANT>.
-# ---------------------------------------------------------------------------
+# Named parameter sets for Griffin (<PREFIX>_<FIELD>_<VARIANT>).
 
 from utils.field import BLS12_381_SCALAR, BN254_SCALAR, ST, GOLDILOCKS
 from griffin.params import GriffinParams
@@ -19,9 +13,7 @@ GRIFFIN_BN254_T3 = GriffinParams(
     t=3,
     alpha=5,
     R=12,
-    r=2,
-    c=1,
-    d=1,
+    sponge=dict(r=2, c=1, d=1),
 )
 
 GRIFFIN_BLS12_T3 = GriffinParams(
@@ -29,9 +21,7 @@ GRIFFIN_BLS12_T3 = GriffinParams(
     t=3,
     alpha=5,
     R=12,
-    r=2,
-    c=1,
-    d=1,
+    sponge=dict(r=2, c=1, d=1),
 )
 
 GRIFFIN_ST_T3 = GriffinParams(
@@ -39,9 +29,7 @@ GRIFFIN_ST_T3 = GriffinParams(
     t=3,
     alpha=3,
     R=16,
-    r=2,
-    c=1,
-    d=1,
+    sponge=dict(r=2, c=1, d=1),
 )
 
 # ---------------------------------------------------------------------------
@@ -53,9 +41,7 @@ GRIFFIN_GOLDILOCKS_T8 = GriffinParams(
     t=8,
     alpha=7,
     R=8,
-    r=4,
-    c=4,
-    d=4,
+    sponge=dict(r=4, c=4, d=4),
 )
 
 GRIFFIN_GOLDILOCKS_T12 = GriffinParams(
@@ -63,7 +49,5 @@ GRIFFIN_GOLDILOCKS_T12 = GriffinParams(
     t=12,
     alpha=7,
     R=8,
-    r=8,
-    c=4,
-    d=8,
+    sponge=dict(r=8, c=4, d=8),
 )

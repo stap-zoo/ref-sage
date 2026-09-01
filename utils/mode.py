@@ -11,7 +11,7 @@ from recommendations import recommend
 from math import ceil, log2
 
 # Custom imports
-from utils.matrix import add_at, replace_at
+from utils.matrix import add_at, replace_at, matvecmul, vecadd
 
 # ===========================================================================
 # Small helpers, like universally used padding rules
@@ -281,18 +281,16 @@ class Sponge:
                     
         return self._run(perm, data, o, input_len_fixed, c_val)
     
-    def tree_hash(self, perm, children: list[list], arity: int = None) -> list:
-        """a-to-1 Merkle node: absorb `arity` d-element children, squeeze one d-element parent."""
-        a = len(children) if arity is None else arity
-        if len(children) != a:
-            raise ValueError(f"expected {a} children, got {len(children)}")
-        if any(len(ch) != self.d for ch in children):
-            raise ValueError(f"each child must be {self.d} elements; got {[len(ch) for ch in children]}")
-
-        data = [x for ch in children for x in ch] # a*d elements
-        if len(data) % self.r != 0:
-            raise ValueError(f"arity*d = {len(data)} must be a multiple of rate r={self.r} for a padding-free tree node")
-        return self.hash(perm, data, input_len_fixed=True)
+    def compress(self, perm, data: list) -> list:
+        """Sponge-based compression  a*d -> d: absorb the fixed-length input `data`.
+        The arity a = len(data)/d is computed here and must be a plain integer; raises otherwise."""
+        if len(data) % self.d != 0:
+            raise ValueError(f"sponge compression: input length {len(data)} is not a multiple "
+                             f"of the digest size d={self.d} (no integer arity)")
+        a = len(data) // self.d
+        if a < 2:
+            raise ValueError(f"sponge compression needs arity a >= 2 (a*d input), got a={a}")
+        return self.hash(perm, data, input_len_fixed=True)   # output_len defaults to self.d
 
 
 
@@ -442,132 +440,167 @@ class SpongeSAFE(Sponge):
 
 
 # ---------------------------------------------------------------------------
-# Mode parameters: derivation and security checks
+# Compression modes (class hierarchy, mirroring Sponge)
 # ---------------------------------------------------------------------------
-def get_min_digest(kappa: int, p: int) -> int:
-    """Smallest collision-resistant output: d*ceil(log2 p)/2 >= kappa, i.e. the birthday
-    bound on the output itself must clear the target. Same 2*kappa budget and rounding as
-    get_min_capacity."""
-    return max(1, round(2 * kappa / bitsof(p)))
 
-def get_min_trunc(kappa: int, p: int) -> int:
-    """Minimum number of state elements a truncation compression must DISCARD.
-    
-    In a Davies-Meyer / truncation compression, trunc_d(P(x) + x) keeps d of the t state
-    elements and drops the other t - d. Those dropped elements are what make the map
-    non-invertible -- but an attacker can simply guess them. Guessing the truncated part
-    costs p^(t-d) = 2^((t-d)*log2 p) work, so to keep inversion/preimage attacks above a
-    kappa-bit target the discarded tail must satisfy t - d >= ceil(kappa / bitsof(p)).
+class Compression:
+    """Feed-forward compression  x in F_p^t  |->  M*(P(x) + x)  in F_p^d,  d < t.
+
+    The unifying frame from compression.md: given a permutation P and a right-invertible
+    matrix M in F_p^{d x t}, the compression function is M*(P(x) + x). Truncation (the
+    'compression mode', M = I_{d x t}, keeping the first d elements) is the default; Jive_b
+    is the same construction with a different M (see CompressionJive).
+
+    Like Sponge, this resolves + validates its sizes (t, d, a) at construction and takes the
+    permutation per compress() call, so it can be built as soon as t is known and bound to a
+    concrete permutation over F_p^t later. The state is viewed as a = t/d blocks of size d
+    (the arity) when d divides t.
     """
-    return max(1, ceil(kappa / bitsof(p)))
 
-def resolve_compression_params(kappa: int, p: int, t: int, mode: str | None, d: int = None, a: int = None) -> tuple[str, int, int] | None:
-    """Resolve/validate the compression parameters for a state of size t.
+    def __init__(self, kappa, p, *, t, d=None, a=None, M=None, to_field=lambda x: x, toy=False):
+        """Construct a compression over F_p at security level kappa.
 
-    Returns (mode,d,a) with d the digest length and a = t/d the arity, or None if the
-    primitive defines no compression (mode is None). Raises if a compression IS requested
-    but can't be defined.
+        Parameters
+        ----------
+        kappa    : target security level in bits (drives the collision/guessing floors).
+        p        : prime of the field F_p; bits/element = ceil(log2 p).
+        t        : state size (= permutation width). Required.
+        d, a     : digest size and arity under t = a*d; either may be derived from the other,
+                   or both omitted to take the collision floor for d.
+        M        : d x t matrix over F_p (right-invertible). Default: the mode's _default_M
+                   (identity truncation here).
+        to_field : int -> field element (default identity); used to build the default matrix.
+        toy      : if True, security-floor violations warn instead of raising.
+        """
+        self.kappa_target, self.p, self.to_field, self.toy = kappa, p, to_field, toy
+        self.resolve_params(kappa, p, t, d, a, toy)
+        self.M = self._default_M() if M is None else M
+        self._check_matrix(toy)
 
-    Independent of the sponge digest on purpose: a sponge may squeeze d >= t (XOF), but a
-    compression is only defined for d < t. Resolution order:
-      * arity given  -> d = t // arity
-      * digest given -> d = digest, b = t // d
-      * neither      -> d = get_min_digest(kappa, p) (the security floor, = 2-to-1 when t=2c)
-    """
-    if mode is None:
-        return None # primitive has no compression
+    # ---------------------------------------------------------------------------
+    # Security bound helpers and parameter resolution
+    # ---------------------------------------------------------------------------
 
-    d_min = get_min_digest(kappa, p)
-    if arity is not None:
-        if t % arity != 0:
-            raise ValueError(f"arity {arity} must divide t={t}")
-        d = t // arity
-    else:
-        d = d_min if digest is None else digest
+    def get_min_digest(self, kappa: int, pbits: int) -> int:
+        """Smallest collision-resistant digest: d * pbits >= 2 * kappa, i.e. the birthday
+        bound on the output clears the target. round, not ceil -> snap to the nearest
+        achievable element count (might arrive slightly below kappa). Mirrors Sponge."""
+        return max(1, round(2 * kappa / pbits))
 
-    # --- the defining constraint: a compression must shrink ---
-    if d >= t:
-        raise ValueError(f"no compression defined: digest d={d} >= state t={t} "
-                         f"(nothing is compressed; use the sponge for d >= t)")
-    if d < 1:
-        raise ValueError(f"digest d={d} must be >= 1")
+    def get_min_trunc(self, kappa: int, pbits: int) -> int:
+        """Minimum number of state elements a truncation compression must DISCARD.
 
-    # --- security floors (normally implied by the sponge's r >= c; kept as a guard) ---
-    if d < d_min:
-        raise ValueError(f"digest d={d} below {kappa}-bit collision floor {d_min}")
+        trunc_d(P(x) + x) keeps d of the t state elements and drops t - d; the dropped tail
+        is what makes the map non-invertible, but an attacker can guess it for p^(t-d) =
+        2^((t-d)*pbits) work. To keep inversion/preimage above kappa the tail must satisfy
+        t - d >= ceil(kappa / pbits)."""
+        return max(1, ceil(kappa / pbits))
 
-    b = t // d
-    if mode == "jive":
-        if t % d != 0:
-            raise ValueError(f"Jive_b needs d | t: t={t}, d={d} (capacity/digest diverge, "
-                             f"e.g. Tip5 t=16,d=5 -- use a sponge-style compression instead)")
-    elif mode == "trunc":
-        trunc_min = get_min_trunc(kappa, p)
+    def resolve_params(self, kappa, p, t, d, a, toy):
+        """Resolve (t, d, a) under t = a*d from any sufficient subset; then apply the
+        collision floor on d and the truncation-guessing floor on t - d."""
+        pbits = bitsof(p)
+        d_min = self.get_min_digest(kappa, pbits)
+        trunc_min = self.get_min_trunc(kappa, pbits)
+
+        if a is not None and d is not None:
+            if a * d != t:
+                raise ValueError(f"compression invariant violated: a*d = {a*d} != t = {t}")
+        elif a is not None:
+            if t % a != 0:
+                raise ValueError(f"arity a={a} must divide t={t}")
+            d = t // a
+        elif d is not None:
+            pass
+        else:
+            d = d_min
+
+        # arity is only well-defined as an integer when d divides t (Jive needs this)
+        a = t // d if t % d == 0 else None
+
+        # --- the defining constraint: a compression must shrink (hard) ---
+        if not (1 <= d < t):
+            raise ValueError(f"digest d={d} must satisfy 1 <= d < t={t} (must shrink)")
+
+        # --- security floors (recommend(): raise unless toy) ---
+        if d < d_min:
+            recommend(f"digest d={d} ({d * pbits} bits) below {kappa}-bit collision floor {d_min}", toy)
         if t - d < trunc_min:
-            raise ValueError(f"truncated tail t-d={t-d} below {kappa}-bit guessing floor {trunc_min}")
-    else:
-        raise ValueError(f"unknown compression mode {mode}")
+            recommend(f"truncated tail t-d={t-d} below {kappa}-bit guessing floor {trunc_min}", toy)
 
-    return mode, d, b
+        self.t, self.d, self.a, self.d_min = t, d, a, d_min
+        self.kappa_achieved = d * pbits // 2  # collision resistance up to p^{d/2}
+
+    def _default_M(self):
+        """Truncation matrix I_{d x t}: the first d rows of the t x t identity (keep the
+        first d elements of P(x) + x). Overridden by named modes (e.g. Jive)."""
+        return [[self.to_field(1 if j == i else 0) for j in range(self.t)] for i in range(self.d)]
+
+    def _check_matrix(self, toy):
+        """M must be d x t (hard) and right-invertible, i.e. full row rank d (recommend()).
+        The rank is checked over the field of M's entries when they live in one (sage
+        field elements); for plain-int toy matrices the check is skipped."""
+        if len(self.M) != self.d or any(len(row) != self.t for row in self.M):
+            got = f"{len(self.M)}x{len(self.M[0]) if self.M else 0}"
+            raise ValueError(f"M must be a {self.d}x{self.t} matrix; got {got}")
+        try:
+            from sage.all import Matrix
+            rank = Matrix(self.M).rank()
+        except Exception:
+            rank = None  # entries not in a field sage can build a matrix over; skip
+        if rank is not None and rank != self.d:
+            recommend(f"M is not right-invertible: rank {rank} != d={self.d}", toy)
+
+    # ---------------------------------------------------------------------------
+    # Compression
+    # ---------------------------------------------------------------------------
+
+    def compress(self, perm, state):
+        """M*(P(x) + x): apply the permutation, feed-forward, then the d x t matrix."""
+        if len(state) != self.t:
+            raise ValueError(f"compress expects t={self.t} elements, got {len(state)}")
+        return matvecmul(self.M, vecadd(perm(state), state))
+
+
+class CompressionJive(Compression):
+    """Anemoi's Jive_b compression (https://eprint.iacr.org/2022/840.pdf, Sec. 3.2):
+    the same M*(P(x)+x) frame with M = [I_d | I_d | ... | I_d] (a = t/d horizontal blocks).
+    Block i of the output is the field-sum of block i across P(x) + x -- i.e.
+        Jive_a(x_1, ..., x_a) = sum_j (x_j + P(x_1 || ... || x_a)_j).
+    Requires d | t (equal-size blocks)."""
+
+    def _default_M(self):
+        if self.t % self.d != 0:
+            raise ValueError(f"Jive needs d | t (equal blocks): t={self.t}, d={self.d}")
+        return [[self.to_field(1 if (j % self.d) == i else 0) for j in range(self.t)] for i in range(self.d)]
+
+
+# Sponge-based compression is NOT a Compression class: it is the Sponge.compress method (an
+# a*d -> d node using the sponge's own capacity/squeeze for one-wayness). A primitive that wants
+# it calls H.sponge.compress(perm, state) directly and defines no Compress class.
+
 
 # ---------------------------------------------------------------------------
-# Compression modes
+# Factory initializers: build a Sponge / Compression from a (kind, info) spec
 # ---------------------------------------------------------------------------
 
-def compress(perm, data: list, kappa: int, p: int, mode: str, digest: int, to_field=lambda x: x) -> list:
-    """State-to-digest compression. Validates per `mode`, then delegates.
+_SPONGE_KINDS = {
+    "plain": SpongePlain, "le": SpongeLE, "cle": SpongeCLE, "sponge2": Sponge2,
+    "rescue": SpongeRescue, "rpo": SpongeRPO, "hirose": SpongeHirose, "pi": SpongePI,
+    "safe": SpongeSAFE,
+}
 
-    perm    : the permutation (state -> state)
-    data    : full state, len == t
-    kappa   : target security level
-    p       : prime
-    mode    : "jive"  (Anemoi Jive_b: sum of b=t/d blocks of input and permuted output)
-              "trunc" (Davies-Meyer: trunc_d(P(x) + x))
-    digest  : output length d
-    """
-    t = len(data)
-    d_min = get_min_digest(kappa, p)
+def make_sponge(kind, kappa, p, *, t, to_field=lambda x: x, toy=False, **info):
+    """Build a Sponge subclass by name. `info` carries the sponge sizes (r, c, d, ...)."""
+    if kind not in _SPONGE_KINDS:
+        raise ValueError(f"unknown sponge kind {kind}; known: {sorted(_SPONGE_KINDS)}")
+    return _SPONGE_KINDS[kind](kappa, p, t=t, to_field=to_field, toy=toy, **info)
 
-    # --- shared validation ---
-    if not (1 <= d < t):
-        raise ValueError(f"digest d={d} must satisfy 1 <= d < t={t} (must shrink)")
-    if digest < d_min:
-        raise ValueError(f"digest d={d} below {kappa}-bit collision floor {d_min}")
-
-    # --- mode-specific validation + dispatch ---
-    if mode == "jive":
-        
-        return compress_jive(perm, data, d, to_field)
-
-    if mode == "trunc":
-        trunc_min = get_min_trunc(kappa, p)
-        if t - d < trunc_min:
-            raise ValueError(f"truncated part t-d={t-d} below {kappa}-bit guessing floor {trunc_min}")
-        return compress_trunc(perm, data, d, to_field)
-
-    raise ValueError(f"unknown compression mode {mode}")
-
-def compress_trunc(perm, state: list, d: int, to_field=lambda x: x) -> list:
-    """Davies-Meyer / truncation compression: trunc_d(P(x) + x), keeping the first d (= digest size) 
-    of the t (= state size) elements. The truncated part is what makes it one-way."""
-    out = perm(state)
-    return [out[i] + state[i] for i in range(d)] # left-truncate to digest size
-
-# TODO update
-def compress_davies_meyer(perm, x_m: list, x_c: list, digest_size: int, to_field=lambda x: x) -> list:
-    """Davies-Meyer compression: trunc(perm(x_m || x_c) + (x_m || x_c))."""
-    if x_c is None:
-        x_c = [to_field(0)] * digest_size
-    return compress_trunc(perm, x_m + x_c, digest_size, to_field)
-
-def compress_jive(perm, state: list, d: int, to_field=lambda x: x) -> list:
-    """Anemoi's Jive_b (b*d -> d; b-to-1) compression mode (https://eprint.iacr.org/2022/840.pdf, Sec. 3.2):
-        Jive_b(x_1, ..., x_b) = sum_j x_j + sum_j P(x_1 || ... || x_b)_j
-    where P is the permutation and the state is viewed as b = t/d blocks of equal size d (= digest size). 
-    Block i of the output is the field-sum of block i across both the input state and P(state)."""
-    t = len(state)
-    if t % d != 0:
-        raise ValueError(f"Jive_b arity b=t/d must be integer: t={t}, d={d}")
-    b = t//d
-    out = perm(state)
-    return [sum((state[i + d * j] + out[i + d * j] for j in range(b)), to_field(0)) for i in range(d)]
+def make_compression(kind, kappa, p, *, t, to_field=lambda x: x, toy=False, **info):
+    """Build a feed-forward Compression M*(P(x)+x) by name. `info` carries d/a/M. (Sponge-based
+    compression is not built here -- it is the Sponge.compress method.)"""
+    if kind in ("trunc", "mode"):
+        return Compression(kappa, p, t=t, to_field=to_field, toy=toy, **info)
+    if kind == "jive":
+        return CompressionJive(kappa, p, t=t, to_field=to_field, toy=toy, **info)
+    raise ValueError(f"unknown compression kind {kind}")

@@ -1,11 +1,5 @@
 # instances.py
-# ---------------------------------------------------------------------------
-# Concrete, named parameter sets for Tip5 and its TIP4 / TIP4' variants.
-#
-# Each entry is a ready-to-use Tip5Params instance pinned to the Goldilocks
-# field from utils/field.py, so every consumer agrees on the exact same parameters.
-# TIP5/TIP4/TIP4' are the spec-proper instance names (single field, Goldilocks).
-# ---------------------------------------------------------------------------
+# Named parameter sets for Tip5 (<PREFIX>_<FIELD>_<VARIANT>).
 
 from utils.field import GOLDILOCKS
 from utils.matrix import circulant

@@ -1,20 +1,5 @@
 # instances.py
-# ---------------------------------------------------------------------------
-# Concrete, named parameter sets for Grendel.
-#
-# The Grendel paper (https://eprint.iacr.org/2021/984) defines no table of
-# recommended instances. 
-# 
-# The only concrete parameters it mentions are the two 16-bit toy fields 
-# p = 65519 (p = 3 mod 4) and p = 65393 (p = 1 mod 4) with t = 2, r = c = 1,
-# used for the Groebner-basis experiments. Those two are registered
-# here, clearly marked TOY_: they are for cryptanalysis / regression testing
-# and are NOT secure (constructing them raises ParamRecommendationWarning,
-# which is the expected signal).
-#
-# Naming convention: <PRIMITIVE>_<FIELD>_<VARIANT>, with the TOY_ prefix for
-# non-recommended sets.
-# ---------------------------------------------------------------------------
+# Named parameter sets for Grendel (<PREFIX>_<FIELD>_<VARIANT>).
 
 from grendel.params import GrendelParams
 
@@ -31,9 +16,7 @@ TOY_GRENDEL_65519_T2 = GrendelParams(
     p=65519,
     t=2,
     g=11,
-    r=1,
-    c=1,
-    d=1,
+    sponge=dict(r=1, c=1, d=1, toy=True),
     kappa=16,
     toy=True,
 )
@@ -43,9 +26,7 @@ TOY_GRENDEL_65393_T2 = GrendelParams(
     p=65393,
     t=2,
     g=3,
-    r=1,
-    c=1,
-    d=1,
+    sponge=dict(r=1, c=1, d=1, toy=True),
     kappa=16,
     toy=True,
 )

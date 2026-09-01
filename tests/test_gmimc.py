@@ -15,7 +15,7 @@ import warnings
 
 import pytest
 
-from gmimc.hash import GMiMC
+from gmimc.hash import GMiMCPerm, GMiMCHash
 from gmimc.params import GMiMCParams
 from gmimc.instances import GMIMC_BN254_T3, GMIMC_BLS12_T3
 from utils.matrix import matvecmul
@@ -69,10 +69,10 @@ KAT_IDS = [
 
 @pytest.mark.parametrize("name,params,kat", KAT_CASES, ids=KAT_IDS)
 def test_permutation_kat(name, params, kat):
-    prim = GMiMC(params)
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.permutation(inp)
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    P = GMiMCPerm(params)
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = P.permute(inp)
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 
 # Sponge KATs: inputs chosen to exercise pad_zero (empty, shorter than the rate,
@@ -108,10 +108,11 @@ SPONGE_KAT_IDS = [
 
 @pytest.mark.parametrize("name,params,kat", SPONGE_KAT_CASES, ids=SPONGE_KAT_IDS)
 def test_sponge_kat(name, params, kat):
-    prim = GMiMC(params)
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.hash_sponge(inp)
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    P = GMiMCPerm(params)
+    H = GMiMCHash(P, params.sponge)
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = H.hash(inp, input_len_fixed=True)
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 
 # ---------------------------------------------------------------------------
@@ -120,21 +121,21 @@ def test_sponge_kat(name, params, kat):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_roundtrip(name, params):
-    prim = GMiMC(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = GMiMCPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_layer_roundtrip(name, params):
     # Each component layer must be undone by its _inv partner, for every round.
-    prim = GMiMC(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(prim.R):
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+    P = GMiMCPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(P.R):
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 
 # ---------------------------------------------------------------------------
@@ -143,33 +144,34 @@ def test_layer_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_deterministic(name, params):
-    prim = GMiMC(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = GMiMCPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_distinct_inputs(name, params):
-    prim = GMiMC(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = GMiMCPerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_output_size(name, params):
-    prim = GMiMC(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert len(prim.permutation(inp)) == prim.t
+    P = GMiMCPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert len(P.permute(inp)) == P.t
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_sponge_output_size(name, params):
-    prim = GMiMC(params)
-    data = [prim.F.random_element() for _ in range(prim.sponge.r)]
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    P = GMiMCPerm(params)
+    H = GMiMCHash(P, params.sponge)
+    data = [P.F.random_element() for _ in range(params.sponge["r"])]
+    assert len(H.hash(data, input_len_fixed=True)) == H.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -179,18 +181,18 @@ def test_sponge_output_size(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_linear_layer_matches_matrix(name, params):
     # GMiMC's linear layer is the cyclic-shift permutation matrix (not MDS by design).
-    prim = GMiMC(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.linear_layer(inp, 0) == matvecmul(prim.M, inp)
+    P = GMiMCPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.linear_layer(inp, 0) == matvecmul(P.M, inp)
     # Cyclic left shift: entry i of the output is entry (i+1) mod t of the input.
-    assert prim.linear_layer(inp, 0) == inp[1:] + inp[:1]
+    assert P.linear_layer(inp, 0) == inp[1:] + inp[:1]
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_generated_matches_instance(name, params):
     # Rebuilding the params without M / rcons must reproduce the pinned instance.
     derived = GMiMCParams(p=params.p, t=params.t, R=params.R,
-                          r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                          sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
     assert derived.M == params.M
     assert derived.rcons == params.rcons
 
@@ -199,7 +201,7 @@ def test_generated_matches_instance(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_rounds_derivation_matches_instance(name, params):
     derived = GMiMCParams(p=params.p, t=params.t,
-                          r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # R omitted -> _init_rounds
+                          sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))  # R omitted -> _init_rounds
     assert derived.R == params.R
 
 
@@ -208,20 +210,20 @@ def test_rounds_derivation_matches_instance(name, params):
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = GMiMC(GMIMC_BN254_T3)
+    P = GMiMCPerm(GMIMC_BN254_T3)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
+        P.permute([P.F.zero()] * (P.t + 1))
 
 
 def test_alpha_must_be_permutation():
     # An explicit alpha not coprime with p-1 must be rejected by params.
     with pytest.raises(ValueError):
-        GMiMCParams(p=GMIMC_BN254_T3.p, t=3, R=5, alpha=2, r=2, c=1, d=1)
+        GMiMCParams(p=GMIMC_BN254_T3.p, t=3, R=5, alpha=2, sponge=dict(r=2, c=1, d=1))
 
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        GMiMCParams(p=101, t=3, R=5, r=2, c=1, d=1, toy=True)  # tiny field
+        GMiMCParams(p=101, t=3, R=5, sponge=dict(r=2, c=1, d=1), toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
@@ -229,12 +231,12 @@ def test_recommended_instance_no_warning(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("error", ParamRecommendationWarning)
         GMiMCParams(p=params.p, t=params.t, R=params.R,
-                    r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                    sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
 
 
 def test_constants_reproducible():
     # Same parameters -> identical derived constants and matrix.
-    a = GMiMCParams(p=GMIMC_BLS12_T3.p, t=3, R=10, r=2, c=1, d=1)
-    b = GMiMCParams(p=GMIMC_BLS12_T3.p, t=3, R=10, r=2, c=1, d=1)
+    a = GMiMCParams(p=GMIMC_BLS12_T3.p, t=3, R=10, sponge=dict(r=2, c=1, d=1))
+    b = GMiMCParams(p=GMIMC_BLS12_T3.p, t=3, R=10, sponge=dict(r=2, c=1, d=1))
     assert a.rcons == b.rcons
     assert a.M == b.M

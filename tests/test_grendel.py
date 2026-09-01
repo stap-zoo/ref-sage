@@ -23,7 +23,7 @@ import pytest
 from sage.all import GF, matrix, legendre_symbol
 
 from recommendations import ParamRecommendationWarning
-from grendel.hash import Grendel
+from grendel.hash import GrendelPerm, GrendelHash
 from grendel.params import GrendelParams
 from grendel.instances import TOY_GRENDEL_65519_T2, TOY_GRENDEL_65393_T2
 from utils.field import BLS12_381_SCALAR
@@ -89,9 +89,9 @@ PERMUTATION_KAT_IDS = [f"{name}-{i}" for name, _ in INSTANCES
 
 @pytest.mark.parametrize("name,params,kat", PERMUTATION_KAT_CASES, ids=PERMUTATION_KAT_IDS)
 def test_permutation_kat_self(name, params, kat):
-    prim = Grendel(params)
-    out = prim.permutation([prim.to_field(x) for x in kat["input"]])
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    P = GrendelPerm(params)
+    out = P.permute([P.to_field(x) for x in kat["input"]])
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 
 SPONGE_KAT_CASES = [(name, params, kat) for name, params in INSTANCES
@@ -102,9 +102,10 @@ SPONGE_KAT_IDS = [f"{name}-{i}" for name, _ in INSTANCES
 
 @pytest.mark.parametrize("name,params,kat", SPONGE_KAT_CASES, ids=SPONGE_KAT_IDS)
 def test_sponge_kat_self(name, params, kat):
-    prim = Grendel(params)
-    out = prim.hash_sponge([prim.to_field(x) for x in kat["input"]])
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    P = GrendelPerm(params)
+    H = GrendelHash(P, params.sponge)
+    out = H.hash([P.to_field(x) for x in kat["input"]])
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 
 # ---------------------------------------------------------------------------
@@ -113,27 +114,27 @@ def test_sponge_kat_self(name, params, kat):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_roundtrip(name, params):
-    prim = Grendel(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = GrendelPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_layer_roundtrip(name, params):
-    prim = Grendel(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(prim.R):
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
+    P = GrendelPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(P.R):
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+        assert P.constant_addition_inv(P.constant_addition(inp, r), r) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_sbox_roundtrip_and_zero(name, params):
-    prim = Grendel(params)
-    for x in [prim.F.zero(), prim.F.one(), prim.to_field(-1), prim.F.random_element()]:
-        assert prim._sbox_inv(prim._sbox(x)) == x
-    assert prim._sbox(prim.F.zero()) == prim.F.zero()   # f(0) = 0 (legendre(0) = 0)
+    P = GrendelPerm(params)
+    for x in [P.F.zero(), P.F.one(), P.to_field(-1), P.F.random_element()]:
+        assert P._sbox_inv(P._sbox(x)) == x
+    assert P._sbox(P.F.zero()) == P.F.zero()   # f(0) = 0 (legendre(0) = 0)
 
 
 # ---------------------------------------------------------------------------
@@ -142,26 +143,27 @@ def test_sbox_roundtrip_and_zero(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_deterministic(name, params):
-    prim = Grendel(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = GrendelPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_distinct_inputs(name, params):
-    prim = Grendel(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = GrendelPerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_output_sizes(name, params):
-    prim = Grendel(params)
-    assert len(prim.permutation([prim.F.zero()] * prim.t)) == prim.t
-    assert len(prim.hash_sponge([prim.F.random_element() for _ in range(prim.sponge.r)])) == prim.sponge.d
+    P = GrendelPerm(params)
+    H = GrendelHash(P, params.sponge)
+    assert len(P.permute([P.F.zero()] * P.t)) == P.t
+    assert len(H.hash([P.F.random_element() for _ in range(params.sponge["r"])])) == H.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -209,19 +211,19 @@ def test_mds_matrix_reproduces_algorithm4(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_legendre_agrees_with_sage(name, params):
-    prim = Grendel(params)
+    P = GrendelPerm(params)
     for x in [0, 1, 2, 3, 5, 7, 1234, params.p - 1]:
-        assert prim.from_field(prim._legendre(prim.to_field(x))) % params.p \
+        assert P.from_field(P._legendre(P.to_field(x))) % params.p \
             == legendre_symbol(x, params.p) % params.p
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_sbox_closed_form(name, params):
     # x^alpha * legendre(x) equals the single power map x^(alpha + (p-1)/2)
-    prim = Grendel(params)
+    P = GrendelPerm(params)
     for _ in range(10):
-        x = prim.F.random_element()
-        assert prim._sbox(x) == x ** prim.e
+        x = P.F.random_element()
+        assert P._sbox(x) == x ** P.e
 
 
 # ---------------------------------------------------------------------------
@@ -236,18 +238,18 @@ def test_known_legendre_model_satisfiability(name, params):
     # Substituting the intermediate states of a concrete permutation run must
     # make every equation vanish, confirming the algebraic model matches the
     # evaluation code.
-    prim = Grendel(params)
-    states = [[prim.F.random_element() for _ in range(prim.t)]]
-    for r in range(prim.R):
-        state = prim.constant_addition(prim.linear_layer(prim.nonlinear_layer(states[-1], r), r), r)
+    P = GrendelPerm(params)
+    states = [[P.F.random_element() for _ in range(P.t)]]
+    for r in range(P.R):
+        state = P.constant_addition(P.linear_layer(P.nonlinear_layer(states[-1], r), r), r)
         states.append(state)
-    assert states[-1] == prim.permutation(states[0])
+    assert states[-1] == P.permute(states[0])
 
-    for i in range(prim.R):
-        symbols = [prim._legendre(x) for x in states[i]]
-        for k in range(prim.t):
-            eq = sum(prim.M[k][j] * states[i][j] ** prim.alpha * symbols[j]
-                     for j in range(prim.t)) + prim.rcons[i][k] - states[i + 1][k]
+    for i in range(P.R):
+        symbols = [P._legendre(x) for x in states[i]]
+        for k in range(P.t):
+            eq = sum(P.M[k][j] * states[i][j] ** P.alpha * symbols[j]
+                     for j in range(P.t)) + P.rcons[i][k] - states[i + 1][k]
             assert eq == 0
 
 
@@ -257,28 +259,28 @@ def test_known_legendre_model_satisfiability(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_invalid_state_size_raises(name, params):
-    prim = Grendel(params)
+    P = GrendelPerm(params)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
+        P.permute([P.F.zero()] * (P.t + 1))
     with pytest.raises(ValueError):
-        prim.permutation_inv([prim.F.zero()] * (prim.t + 1))
+        P.permute_inv([P.F.zero()] * (P.t + 1))
 
 
 def test_invalid_alpha_raises():
     # alpha = 3 over p = 65519 gives e = 3 + (p-1)/2 even, sharing the factor 2
     # with p-1: the S-box would not be a permutation
     with pytest.raises(ValueError):
-        GrendelParams(p=65519, t=2, r=1, c=1, d=1, alpha=3, kappa=16)
+        GrendelParams(p=65519, t=2, sponge=dict(r=1, c=1, d=1), alpha=3, kappa=16)
 
 
 def test_too_small_state_raises():
     with pytest.raises(ValueError):
-        GrendelParams(p=65519, t=1, r=1, c=0, d=1, kappa=16)
+        GrendelParams(p=65519, t=1, sponge=dict(r=1, c=0, d=1), kappa=16)
 
 
 def test_toy_instance_warns():
     with pytest.warns(ParamRecommendationWarning):
-        GrendelParams(p=65519, t=2, r=1, c=1, d=1, kappa=16, toy=True)
+        GrendelParams(p=65519, t=2, sponge=dict(r=1, c=1, d=1), kappa=16, toy=True)
 
 
 def test_recommended_instance_no_warning():
@@ -286,15 +288,14 @@ def test_recommended_instance_no_warning():
     # root finding needs p >= 2^160, the digest needs d * log2(p) >= 256.
     with warnings.catch_warnings():
         warnings.simplefilter("error", ParamRecommendationWarning)
-        GrendelParams(p=BLS12_381_SCALAR.p, t=3, r=2, c=1, d=2, kappa=128)
+        GrendelParams(p=BLS12_381_SCALAR.p, t=3, sponge=dict(r=2, c=1, d=2), kappa=128)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_params_reproducible(name, params):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ParamRecommendationWarning)
-        again = GrendelParams(p=params.p, t=params.t, r=params.sponge.r, c=params.sponge.c,
-                              d=params.sponge.d, kappa=params.kappa, toy=params.toy)
+        again = GrendelParams(p=params.p, t=params.t, sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]), kappa=params.kappa, toy=params.toy)
     assert again.alpha == params.alpha and again.R == params.R and again.g == params.g
     assert again.M == params.M
     assert again.rcons == params.rcons

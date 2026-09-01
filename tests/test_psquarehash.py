@@ -14,7 +14,7 @@ import warnings
 
 import pytest
 
-from psquarehash.hash import pSquareHash
+from psquarehash.hash import pSquareHashPerm, pSquareHashHash
 from psquarehash.params import pSquareHashParams
 from psquarehash.instances import (
     PSQUAREHASH_MERSENNE_T16,
@@ -24,16 +24,6 @@ from recommendations import ParamRecommendationWarning
 
 INSTANCES = [
     ("M31_T16", PSQUAREHASH_MERSENNE_T16),
-    ("M31_T24", PSQUAREHASH_MERSENNE_T24),
-]
-
-# Instances where t == 2*d, so compress_2_to_1 is defined
-COMPRESS_INSTANCES = [
-    ("M31_T16", PSQUAREHASH_MERSENNE_T16),
-]
-
-# Instances where t != 2*d, so compress_2_to_1 raises ValueError
-NO_COMPRESS_INSTANCES = [
     ("M31_T24", PSQUAREHASH_MERSENNE_T24),
 ]
 
@@ -98,10 +88,10 @@ KAT_IDS = [
 
 @pytest.mark.parametrize("name,params,kat", KAT_CASES, ids=KAT_IDS)
 def test_permutation_kat(name, params, kat):
-    prim = pSquareHash(params)
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.permutation(inp)
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    P = pSquareHashPerm(params)
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = P.permute(inp)
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 # ---------------------------------------------------------------------------
 # 4.2 Roundtrip (invertibility)
@@ -109,21 +99,21 @@ def test_permutation_kat(name, params, kat):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_roundtrip(name, params):
-    prim = pSquareHash(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = pSquareHashPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_layer_roundtrip(name, params):
     # Each component layer must be undone by its _inv partner, for every round.
-    prim = pSquareHash(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(prim.R):
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+    P = pSquareHashPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(P.R):
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 # ---------------------------------------------------------------------------
 # 4.3 Consistency
@@ -131,28 +121,29 @@ def test_layer_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_deterministic(name, params):
-    prim = pSquareHash(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = pSquareHashPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_distinct_inputs(name, params):
-    prim = pSquareHash(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = pSquareHashPerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
-    prim = pSquareHash(params)
-    data = [prim.F.random_element() for _ in range(prim.sponge.r)] 
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
-    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)] 
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    P = pSquareHashPerm(params)
+    H = pSquareHashHash(P, params.sponge)
+    data = [P.F.random_element() for _ in range(params.sponge["r"])]
+    assert len(H.hash(data, input_len_fixed=True)) == H.sponge.d
+    data = [P.F.random_element() for _ in range(params.sponge["r"] * 3)]
+    assert len(H.hash(data, input_len_fixed=True)) == H.sponge.d
 
 
 
@@ -161,28 +152,9 @@ def test_sponge_output_size(name, params):
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = pSquareHash(PSQUAREHASH_MERSENNE_T16)
+    P = pSquareHashPerm(PSQUAREHASH_MERSENNE_T16)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
-
-
-@pytest.mark.parametrize("name,params", COMPRESS_INSTANCES, ids=[name for name, _ in COMPRESS_INSTANCES])
-def test_compress_output_size(name, params):
-    prim = pSquareHash(params)
-    half = prim.t // 2
-    x1 = [prim.F.random_element() for _ in range(half)]
-    x2 = [prim.F.random_element() for _ in range(half)]
-    assert len(prim.compress_2_to_1(x1, x2)) == prim.sponge.d
-
-
-@pytest.mark.parametrize("name,params", NO_COMPRESS_INSTANCES, ids=[name for name, _ in NO_COMPRESS_INSTANCES])
-def test_compress_not_defined(name, params):
-    prim = pSquareHash(params)
-    half = prim.t // 2
-    x1 = [prim.F.random_element() for _ in range(half)]
-    x2 = [prim.F.random_element() for _ in range(half)]
-    with pytest.raises(ValueError):
-        prim.compress_2_to_1(x1, x2)
+        P.permute([P.F.zero()] * (P.t + 1))
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +171,7 @@ def test_matrices_generated_match_instance(name, params):
     # must reproduce them.
     derived = pSquareHashParams(p=params.p, t=params.t, R=params.R,
                                 rcons=_instance_rcons_ints(params),
-                                r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                                sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
     assert derived.M == params.M
     assert derived.M_IO == params.M_IO
 
@@ -208,7 +180,7 @@ def test_matrices_generated_match_instance(name, params):
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_cons_generated_matches_instance(name, params):
     derived = pSquareHashParams(p=params.p, t=params.t, R=params.R,
-                                r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # rcons omitted -> _init_cons
+                                sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))  # rcons omitted -> _init_cons
     assert derived.rcons == params.rcons
 
 
@@ -217,7 +189,7 @@ def test_cons_generated_matches_instance(name, params):
 def test_rounds_derivation_matches_instance(name, params):
     derived = pSquareHashParams(p=params.p, t=params.t,
                                 rcons=_instance_rcons_ints(params),
-                                r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # R omitted -> _init_rounds
+                                sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))  # R omitted -> _init_rounds
     assert derived.R == params.R
 
 
@@ -227,7 +199,7 @@ def test_rounds_derivation_matches_instance(name, params):
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        pSquareHashParams(p=8191, t=4, R=6, r=2, c=2, d=2, toy=True)  # tiny field
+        pSquareHashParams(p=8191, t=4, R=6, sponge=dict(r=2, c=2, d=2), toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
@@ -236,12 +208,12 @@ def test_recommended_instance_no_warning(name, params):
         warnings.simplefilter("error", ParamRecommendationWarning)
         pSquareHashParams(p=params.p, t=params.t, R=params.R,
                           rcons=_instance_rcons_ints(params),
-                          r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                          sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
 
 
 def test_constants_reproducible():
     # Same parameters -> identical derived constants and matrices.
-    kwargs = dict(p=PSQUAREHASH_MERSENNE_T16.p, t=16, R=52, r=8, c=8, d=8)
+    kwargs = dict(p=PSQUAREHASH_MERSENNE_T16.p, t=16, R=52, sponge=dict(r=8, c=8, d=8))
     a = pSquareHashParams(**kwargs)
     b = pSquareHashParams(**kwargs)
     assert a.rcons == b.rcons

@@ -1,13 +1,5 @@
 # instances.py
-# ---------------------------------------------------------------------------
-# Concrete, named parameter sets for the Marvellous family (Rescue, Rescue
-# Prime, Rescue Prime Optimized).
-#
-# Each entry is a ready-to-use params instance pinned to a specific field from
-# utils/field.py, so every consumer agrees on the exact same parameters. Naming
-# convention: RESCUE_<FIELD>_<VARIANT> / RESCUE_PRIME_<FIELD>_<VARIANT> /
-# RPO_<FIELD>_<VARIANT>. The sponge rate is r = t - c.
-# ---------------------------------------------------------------------------
+# Named parameter sets for Marvellous (<PREFIX>_<FIELD>_<VARIANT>).
 
 from utils.field import BLS12_381_SCALAR, BN254_SCALAR, ST, GOLDILOCKS, STARKWARE, ED25519_SCALAR, ED448_SCALAR, MERSENNE31
 from marvellous.params import RescueParams, RescuePrimeParams, RescuePrimeOptimizedParams, XHashParams, RPO_MDS_ROWS, XHASH_MDS_M31_T32_ROW
@@ -25,9 +17,7 @@ RESCUE_BLS12_T3 = RescueParams(
     alpha=BLS12_381_SCALAR.alpha,
     alpha_inv=BLS12_381_SCALAR.alpha_inv,
     g=BLS12_381_SCALAR.generator,
-    r=2,
-    c=1,
-    d=1,
+    sponge=dict(r=2, c=1, d=1),
     kappa=128,
 )
 
@@ -37,9 +27,7 @@ RESCUE_BN254_T3 = RescueParams(
     alpha=BN254_SCALAR.alpha,
     alpha_inv=BN254_SCALAR.alpha_inv,
     g=BN254_SCALAR.generator,
-    r=2,
-    c=1,
-    d=1,
+    sponge=dict(r=2, c=1, d=1),
     kappa=128,
 )
 
@@ -49,9 +37,7 @@ RESCUE_ST_T3 = RescueParams(
     alpha=ST.alpha,
     alpha_inv=ST.alpha_inv,
     g=ST.generator,
-    r=2,
-    c=1,
-    d=1,
+    sponge=dict(r=2, c=1, d=1),
     kappa=128,
 )
 
@@ -63,9 +49,7 @@ RESCUE_GOLDILOCKS_T12 = RescueParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     g=GOLDILOCKS.generator,
-    r=8,
-    c=4,
-    d=4,
+    sponge=dict(r=8, c=4, d=4),
     kappa=128, 
 )
 
@@ -79,9 +63,7 @@ RESCUE_STARKWARE_T12 = RescueParams(
     alpha_inv=STARKWARE.alpha_inv,
     g=STARKWARE.generator,
     R=10,
-    r=8,
-    c=4,
-    d=4,
+    sponge=dict(r=8, c=4, d=4),
     kappa=122,
 )
 
@@ -95,9 +77,7 @@ RESCUE_ED25519_T6 = RescueParams(
     alpha_inv=ED25519_SCALAR.alpha_inv,
     g=ED25519_SCALAR.generator,
     R=10,
-    r=4,
-    c=2,
-    d=2,
+    sponge=dict(r=4, c=2, d=2),
     kappa=128,
 )
 
@@ -111,9 +91,7 @@ RESCUE_ED448_T10 = RescueParams(
     alpha_inv=ED448_SCALAR.alpha_inv,
     g=ED448_SCALAR.generator,
     R=10,
-    r=8,
-    c=2,
-    d=2,
+    sponge=dict(r=8, c=2, d=2),
     kappa=224,
 )
 
@@ -129,9 +107,7 @@ RESCUE_PRIME_BLS12_T3 = RescuePrimeParams(
     alpha=BLS12_381_SCALAR.alpha,
     alpha_inv=BLS12_381_SCALAR.alpha_inv,
     g=BLS12_381_SCALAR.generator,
-    r=2,
-    c=1,
-    d=2,
+    sponge=dict(r=2, c=1, d=2),
     kappa=128,
 )
 
@@ -141,9 +117,7 @@ RESCUE_PRIME_BN254_T3 = RescuePrimeParams(
     alpha=BN254_SCALAR.alpha,
     alpha_inv=BN254_SCALAR.alpha_inv,
     g=BN254_SCALAR.generator,
-    r=2,
-    c=1,
-    d=2,
+    sponge=dict(r=2, c=1, d=2),
     kappa=128,
 )
 
@@ -153,9 +127,7 @@ RESCUE_PRIME_ST_T3 = RescuePrimeParams(
     alpha=ST.alpha,
     alpha_inv=ST.alpha_inv,
     g=ST.generator,
-    r=2,
-    c=1,
-    d=2,
+    sponge=dict(r=2, c=1, d=2),
     kappa=128,
 )
 
@@ -167,9 +139,7 @@ RESCUE_PRIME_GOLDILOCKS_T8 = RescuePrimeParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     g=GOLDILOCKS.generator,
-    r=4,
-    c=4,
-    d=4,
+    sponge=dict(r=4, c=4, d=4),
     kappa=128,
 )
 
@@ -179,9 +149,7 @@ RESCUE_PRIME_GOLDILOCKS_T12 = RescuePrimeParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     g=GOLDILOCKS.generator,
-    r=8,
-    c=4,
-    d=4,
+    sponge=dict(r=8, c=4, d=4),
     kappa=128,
 )
 
@@ -197,9 +165,7 @@ RPO_GOLDILOCKS_T12 = RescuePrimeOptimizedParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     R=7,
-    r=8,
-    c=4,
-    d=4, # digest size is rate/2 in RPO
+    sponge=dict(r=8, c=4, d=4), # digest size is rate/2 in RPO
     kappa=128,
 )
 
@@ -210,9 +176,7 @@ RPO_GOLDILOCKS_T16 = RescuePrimeOptimizedParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     R=7,
-    r=10,
-    c=6,
-    d=5, # digest size is rate/2 in RPO
+    sponge=dict(r=10, c=6, d=5), # digest size is rate/2 in RPO
     kappa=160,
 )
 
@@ -290,10 +254,8 @@ XHASH12_GOLDILOCKS_T12 = XHashParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     kappa=128,
-    r=8,
-    c=4,
+    sponge=dict(r=8, c=4, d=4),
     R=6,
-    d=4,
     M=circulant(row=XHASH_MDS_GOLDILOCKS_T12_ROW),
     rcons=XHASH_RCONS_GOLDILOCKS_T12,
     cpolys=XHASH_CPOLYS_GOLDILOCKS_POW7,
@@ -305,10 +267,8 @@ XHASH8_GOLDILOCKS_T12 = XHashParams(
     alpha=GOLDILOCKS.alpha,
     alpha_inv=GOLDILOCKS.alpha_inv,
     kappa=128,
-    r=8,
-    c=4,
+    sponge=dict(r=8, c=4, d=4),
     R=6,
-    d=4,
     M=circulant(row=XHASH_MDS_GOLDILOCKS_T12_ROW),
     rcons=XHASH_RCONS_GOLDILOCKS_T12,
     cpolys=XHASH_CPOLYS_GOLDILOCKS_POW7,
@@ -321,10 +281,8 @@ XHASH24_M31_T24 = XHashParams(
     alpha=MERSENNE31.alpha,
     alpha_inv=MERSENNE31.alpha_inv,
     kappa=124,
-    r=16,
-    c=8,
+    sponge=dict(r=16, c=8, d=8),
     R=6,
-    d=8,
     M=circulant(row=XHASH_MDS_M31_T32_ROW),
     rcons=XHASH_RCONS_M31_T24,
     cpolys=XHASH_CPOLYS_M31_POW5,
@@ -337,10 +295,8 @@ XHASH16_M31_T24 = XHashParams(
     alpha_inv=MERSENNE31.alpha_inv,
     # aggressive version
     kappa=124,
-    r=16,
-    c=8,
+    sponge=dict(r=16, c=8, d=8),
     R=6,
-    d=8,
     M=circulant(row=XHASH_MDS_M31_T32_ROW),
     rcons=XHASH_RCONS_M31_T24,
     cpolys=XHASH_CPOLYS_M31_POW5,

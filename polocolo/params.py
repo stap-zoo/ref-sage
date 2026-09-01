@@ -1,16 +1,5 @@
 # params.py
-# ---------------------------------------------------------------------------
-# Parameter definition for Polocolo: the PolocoloParams class.
-#
-# PolocoloParams is the single source of truth for an instance. It sanitizes 
-# user-facing parameters and expands them into a fully-specified instance that
-# the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper. Settings that depart from 
-# the recommended ones raise a ParamRecommendationWarning rather than an error.
-#
-# NOTE: Polocolo did not fix concrete Sponge, they just write "some appropriate 
-# padding". We here use Sponge2 for simplicity.
-# ---------------------------------------------------------------------------
+# PolocoloParams: the fully-specified parameter set for Polocolo (single source of truth per instance).
 
 # Structural imports
 import warnings
@@ -25,7 +14,6 @@ from math import log2
 from utils.lut import power_residue_sigma, power_residue_lut, power_residue_lut_inv
 from utils.matrix import map_nested, invert_matrix, circulant, dl_m44_84_matrix, low_addition_mds_matrix
 from utils.sampler import XOFFieldElementSampler
-from utils.mode import Sponge2
 from utils.complexities import uni_solve_comp
 from utils.field import BLS12_381_SCALAR, BN254_SCALAR, find_smallest_generator
 
@@ -103,10 +91,9 @@ class PolocoloParams:
         rcons:       list[list[int]] = None,
         g:           int = None,
         field_label: str = None,
-        # Sponge parameters (derived if not provided)
-        r:           int = None,
-        c:           int = None,
-        d:           int = None,
+        # Modes of operation: sponge params dict dict(r,c,d) (Polocolo is sponge-only).
+        sponge:      dict = None,
+        comp:        dict = None,
         # Target security level (default 128 bits)
         kappa:       int = 128,
         tight:       bool = False,
@@ -128,9 +115,8 @@ class PolocoloParams:
         g           : generator of F_p^*; smallest one if not provided
         field_label : field name in the round-constant seed ("BLS12" / "BN254" for the official
                       fields); derived from p if not provided
-        r           : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
-        c           : capacity (number of inner state elements for sponge); derived if not provided
-        d           : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        sponge: sponge params dict dict(r, c, d), or None
+        comp  : compression params dict, or None (Polocolo is sponge-only)
         kappa       : target security level in bits (default 128)
         tight       : use the tight parameters of Section 6.1 / Table 7 (no security margin,
                       attack bound kappa instead of 1.25*kappa) for the derived m and R
@@ -148,8 +134,8 @@ class PolocoloParams:
         self.tight = tight
         self.toy = toy
 
-        # Sponge parameters
-        self.sponge = Sponge2(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+        # Modes of operation: per-mode param dicts (consumed by the mode functions).
+        self.sponge, self.comp = sponge, comp
 
         # Non-linear layer: the power-residue S-box S(x) = x^{-1} * T[x^ann] with
         # ann = (p-1)/m, realised as the lookup tables LUT / LUT_inv over sigma.

@@ -1,31 +1,11 @@
 # hash.py
-# ---------------------------------------------------------------------------
-# Grendel: the permutation (round function) and the sponge hash built on it.
-#
-# Construct it from a fully-specified GrendelParams object.
-#
-# The nonlinear layer applies the "low-degree power map with possible sign flip":
-#
-#     S(x) = x^alpha * legendre(x)
-#
-# where legendre(x) = x^((p-1)/2) in {-1, 0, 1} is the Legendre symbol of x
-# (Euler's criterion): -1 for a quadratic non-residue, 0 for 0, and 1 for a
-# quadratic residue. The sign flip costs little to evaluate but raises the
-# S-box degree to alpha + (p-1)/2, which is what defends against algebraic
-# attacks at a small number of rounds.
-#
-# NOTE: every component uses only ring operations (+, -, *, **) and never branches 
-# on the value of a state element (the Legendre symbol is computed as the power 
-# x^((p-1)/2), not via a value-based case split). Note that the resulting degree is 
-# of the order of p, so symbolic evaluation is only practical for very few rounds
-# over tiny fields; algebraic models instead keep low-degree relations by
-# introducing helper variables for the Legendre symbols (Sec. 5.4, Eq. 27/28).
-# ---------------------------------------------------------------------------
+# Grendel: GrendelPerm (permutation) and its mode functions (GrendelHash).
 
 from grendel.params import GrendelParams
 from utils.matrix import matvecmul, vecadd, vecsub
+from utils.primitive import Permutation, HashFunction
 
-class Grendel:
+class GrendelPerm(Permutation):
     # ---------------------------------------------------------------------------
     # Initialization
     # ---------------------------------------------------------------------------
@@ -34,13 +14,8 @@ class Grendel:
         # Copy the fully-specified values out of the params object. This class is
         # a pure consumer of params; nothing is derived or checked here.
 
-        # General settings
-        self.p = params.p
-        self.F = params.F
-        self.to_field = params.to_field
-        self.from_field = params.from_field
-        self.t = params.t
-        self.kappa = params.kappa
+        # General settings (F, to_field, from_field, t, p, kappa, toy copied by Permutation)
+        super().__init__(params)
 
         # Rounds
         self.R = params.R
@@ -56,9 +31,6 @@ class Grendel:
 
         # Round constants
         self.rcons = params.rcons
-
-        # Hash modes
-        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component layers
@@ -117,7 +89,7 @@ class Grendel:
     # Permutation
     # ---------------------------------------------------------------------------
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -128,7 +100,7 @@ class Grendel:
             state = self.constant_addition(state, r)
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -139,17 +111,15 @@ class Grendel:
             state = self.nonlinear_layer_inv(state, r)
         return self._pre_rounds_inv(state)
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
 
-    def hash_sponge(self, data: list) -> list:
-        return self.sponge.hash(self.permutation, data)
+# ---------------------------------------------------------------------------
+# Hash function
+#
+# GrendelPerm above is JUST the permutation. Grendel is sponge-only (no compression):
+#     P = GrendelPerm(params)
+#     H = GrendelHash(P, params.sponge)   # Bertoni et al. sponge
+#     H.hash(data)
+# ---------------------------------------------------------------------------
 
-    def compress(self, data: list) -> list:
-        # Grendel defines no dedicated compression function (sponge only).
-        raise NotImplementedError
-
-    def compress_2_to_1(self, x: list, y: list) -> list:
-        # Grendel defines no dedicated compression function (sponge only).
-        raise NotImplementedError
+class GrendelHash(HashFunction):
+    SPONGE_KIND = "plain"     # Bertoni et al. sponge with pad10*

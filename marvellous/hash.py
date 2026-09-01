@@ -1,24 +1,15 @@
 # hash.py
-# ---------------------------------------------------------------------------
-# Marvellous family: the Rescue permutation and its RescuePrime / RPO variants,
-# plus the hash modes built on them.
-#
-# Each class is constructed from a fully-specified params object.
-#
-# NOTE: Rescue / RescuePrime / RPO use double rounds (each "round" consists of 
-# two SPN rounds), while XHash uses triple rounds (each "round" consists of 
-# three SPN rounds). The parameter R counts the primitive "rounds", not the SPN rounds.
-# ---------------------------------------------------------------------------
+# Marvellous: RescuePerm, RescuePrimePerm, RescuePrimeOptimizedPerm, XHashPerm (permutation) and its mode functions (RescueHash, RescuePrimeHash, RescuePrimeOptimizedHash, XHashHash).
 
 from marvellous.params import RescueParams, RescuePrimeParams, RescuePrimeOptimizedParams, XHashParams
 from utils.matrix import matvecmul, vecadd, vecsub
 from utils.poly import eval_aos
+from utils.primitive import Permutation, HashFunction
 
 
-class Rescue:
+class RescuePerm(Permutation):
     def __init__(self, params: RescueParams):
-        self.F = params.F
-        self.t = params.t
+        super().__init__(params)  # F, to_field, from_field, t, p, kappa, toy
 
         # Rounds
         self.R = params.R
@@ -31,13 +22,6 @@ class Rescue:
         self.M = params.M
         self.M_inv = params.M_inv
         self.rcons = params.rcons
-
-        # Hash modes
-        self.sponge = params.sponge
-
-        # Field conversion helpers
-        self.to_field = params.to_field
-        self.from_field = params.from_field
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -83,7 +67,7 @@ class Rescue:
     # Permutation
     # ---------------------------------------------------------------------------
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -101,7 +85,7 @@ class Rescue:
                 state = self.linear_layer(state, r)
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -117,18 +101,11 @@ class Rescue:
                 state = self.constant_addition_inv(state, r)
         return self._pre_rounds_inv(state)
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
-
-    def hash_sponge(self, data: list, variable_length: bool = True) -> list:
-        return self.sponge.hash(self.permutation, data, input_len_fixed=(not variable_length))
-
 # ---------------------------------------------------------------------------
 # Rescue Prime
 # ---------------------------------------------------------------------------
 
-class RescuePrime(Rescue):
+class RescuePrimePerm(RescuePerm):
 
     def __init__(self, params: RescuePrimeParams):
         super().__init__(params)
@@ -145,7 +122,7 @@ class RescuePrime(Rescue):
     def _post_rounds_inv(self, state: list) -> list:
         return state
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         """Similar to Rescue, but nonlinear_layer/nonlinear_layer_inv order switched 
         for even/odd rounds and round constant addition now at the end of each round 
         (thus no final round constant addition in _post_rounds)."""
@@ -165,7 +142,7 @@ class RescuePrime(Rescue):
                 state = self.constant_addition(state, r)
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -185,12 +162,12 @@ class RescuePrime(Rescue):
 # Rescue Prime Optimized (RPO)
 # ---------------------------------------------------------------------------
 
-class RescuePrimeOptimized(RescuePrime):
+class RescuePrimeOptimizedPerm(RescuePrimePerm):
 
     def __init__(self, params: RescuePrimeOptimizedParams):
         super().__init__(params)
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         """Similar to RescuePrime, but order of application of AffineLayer and nonlinear_layer/nonlinear_layer_inv switched."""
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
@@ -208,7 +185,7 @@ class RescuePrimeOptimized(RescuePrime):
                 state = self.nonlinear_layer_inv(state, r) # backward for odd rounds
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -224,25 +201,11 @@ class RescuePrimeOptimized(RescuePrime):
                 state = self.linear_layer_inv(state, r)
         return self._pre_rounds_inv(state)
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
-
-    def hash_sponge(self, data: list) -> list:
-        return self.sponge.hash(self.permutation, data)
-
-    def compress_2_to_1(self, x1: list, x2: list) -> list:
-        """Merge two digests into one (Merkle node): single-permutation path."""
-        r = self.sponge.r # TODO replace with compression notation
-        if len(x1) != r // 2 or len(x2) != r // 2:
-            raise ValueError(f"Inputs must be digests of {r // 2} elements, got {len(x1)} and {len(x2)}.")
-        return self.hash_sponge(x1 + x2)
-
 # ---------------------------------------------------------------------------
 # XHASH
 # ---------------------------------------------------------------------------
 
-class XHash(RescuePrimeOptimized):
+class XHashPerm(RescuePrimeOptimizedPerm):
 
     def __init__(self, params: XHashParams):
         super().__init__(params)
@@ -259,7 +222,9 @@ class XHash(RescuePrimeOptimized):
         self.cpolys = params.cpolys
         self.fmod = params.fmod
 
-        # TODO make sure t is divisible by 3?
+        # Extension degree (= number of coordinate polynomials): the P3 S-box acts on consecutive
+        # ext_degree-coordinate blocks. params guarantees t is divisible by it.
+        self.ext_degree = params.ext_degree
     
     def _pre_rounds(self, state: list) -> list:
         return state
@@ -303,14 +268,15 @@ class XHash(RescuePrimeOptimized):
         """Apply the round-`r` non-linear layer to the full state of t elements.
 
         The schedule mixes two S-boxes by round index:
-        - every third round (r % 3 == 2): the XHash extension S-box pi_2, applied to each consecutive triple of state elements;
+        - every third round (r % 3 == 2): the XHash extension S-box pi_2, applied to each consecutive block of ext_degree state elements (one extension-field element);
         - all other rounds: the standard Rescue forward S-box x -> x^alpha, applied element-wise, skipping the positions in self.skipbox_idx.
         Returns a new state list of the same length t.
         """
         if r % 3 == 2:
-            # XHash S-box pi_2: group the state into consecutive triples [0,1,2], [3,4,5], ... , 
-            # apply the extension S-box to each triple, and flatten the 3-coordinate outputs back into a single flat state list.
-            return [coord for i in range(0, self.t, 3) for coord in self._sbox_P3(state[i:i+3])]
+            # XHash S-box pi_2: group the state into consecutive ext_degree-coordinate blocks
+            # [0..n), [n..2n), ..., apply the extension S-box to each, and flatten back into a single flat state list.
+            n = self.ext_degree
+            return [coord for i in range(0, self.t, n) for coord in self._sbox_P3(state[i:i+n])]
         else:
             # Standard Rescue forward S-box pi_1: x -> x^alpha, skipping indices in skipbox_idx
             return [(state[i] if i in self.skipbox_idx else state[i] ** self.alpha)
@@ -318,12 +284,13 @@ class XHash(RescuePrimeOptimized):
 
     def nonlinear_layer_inv(self, state: list, r: int) -> list:
         if r % 3 == 2:
-            return [coord for i in range(0, self.t, 3) for coord in self._sbox_P3_inv(state[i:i+3])]
+            n = self.ext_degree
+            return [coord for i in range(0, self.t, n) for coord in self._sbox_P3_inv(state[i:i+n])]
         else:
             # Standard Rescue backward S-box pi_1: x -> x^(1/alpha), skipping indices in skipbox_idx
             return [(state[i] if i in self.skipbox_idx else state[i] ** self.alpha_inv) for i in range(self.t)]
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         """Similar to RescuePrime, but order of application of AffineLayer and nonlinear_layer/nonlinear_layer_inv switched."""
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
@@ -344,7 +311,7 @@ class XHash(RescuePrimeOptimized):
                 state = self.nonlinear_layer(state, r)
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -363,3 +330,25 @@ class XHash(RescuePrimeOptimized):
                 state = self.nonlinear_layer_inv(state, r)
                 state = self.constant_addition_inv(state, r)
         return self._post_rounds(state)
+
+# ---------------------------------------------------------------------------
+# Hash functions
+#
+# The permutations above are JUST permutations. Each variant's hash pins its sponge kind.
+# Marvellous defines NO dedicated compression: its Merkle 2-to-1 is simply the sponge hash of
+# the concatenated children, e.g. RescuePrimeOptimizedHash(P, params.sponge).hash(x1 + x2)
+# (each child r/2 = d elements). Rescue / RescuePrime accept a variable_length toggle by
+# passing input_len_fixed=(not variable_length) to hash().
+# ---------------------------------------------------------------------------
+
+class RescueHash(HashFunction):
+    SPONGE_KIND = "rescue"
+
+class RescuePrimeHash(HashFunction):
+    SPONGE_KIND = "rescue"
+
+class RescuePrimeOptimizedHash(HashFunction):
+    SPONGE_KIND = "rpo"
+
+class XHashHash(HashFunction):
+    SPONGE_KIND = "sponge2"

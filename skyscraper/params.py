@@ -1,13 +1,5 @@
 # params.py
-# ---------------------------------------------------------------------------
-# Parameter definition for Skyscraper: the SkyscraperParams class.
-#
-# SkyscraperParams is the single source of truth for an instance. It sanitizes 
-# user-facing parameters and expands them into a fully-specified instance that
-# the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper. Settings that depart from 
-# the recommended ones raise a ParamRecommendationWarning rather than an error.
-# ---------------------------------------------------------------------------
+# SkyscraperParams: the fully-specified parameter set for Skyscraper (single source of truth per instance).
 
 # Structural imports
 import warnings
@@ -22,7 +14,6 @@ from sage.all import GF, Integer, PolynomialRing
 # Custom imports
 from monolith.params import MONOLITH_LUT8   # Skyscraper's Bar reuses Monolith's 8-bit chi table
 from utils.sampler import XOFFieldElementSampler
-from utils.mode import SpongeSAFE
 from utils.matrix import map_nested
 from utils.poly import univ_from_list, power_map_coordinate_polys, poly_to_aos, map_coeffs
 
@@ -40,10 +31,9 @@ class SkyscraperParams:
         bar_rounds: set = None, # TODO pass like this or maybe other method?
         LUTs:       dict[int, list[int]] = None,
         rcons:      list[list[int]] = None,
-        # Sponge parameters (derived if not provided)
-        r:          int = None,
-        c:          int = None,
-        d:          int = None,
+        # Modes of operation: per-mode param dicts (or None). sponge=dict(r,c,d); comp=dict(a=2).
+        sponge:     dict = None,
+        comp:       dict = None,
         # Target security level (default 128 bits)
         kappa:      int = 128,
         toy:        bool = False,
@@ -65,9 +55,8 @@ class SkyscraperParams:
         montgomery : multiply the squaring by sigma_inv (Montgomery constant) if True
         LUTs       : per-radix lookup tables for Bar; generated via _init_LUTs if not provided
         rcons      : R x n round constants; generated via _init_cons (SHA256) if not provided
-        r          : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
-        c          : capacity (number of inner state elements for sponge); derived if not provided
-        d          : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        sponge     : sponge params dict dict(r, c, d), or None for no sponge
+        comp       : compression params dict (e.g. dict(a=2)), or None
         kappa      : target security level in bits (default 128)
         toy        : if True, recommendation-level checks warn instead of raising (default False)
         """
@@ -84,8 +73,8 @@ class SkyscraperParams:
         self.kappa = kappa
         self.toy = toy
 
-        # Sponge parameters
-        self.sponge = SpongeSAFE(kappa=kappa, p=p, t=self.t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+        # Modes of operation: per-mode param dicts (consumed by the mode functions).
+        self.sponge, self.comp = sponge, comp
 
         # Extension degree n and Feistel state of 2 branches => t = 2*n base-field elements.
         if cpolys is not None:

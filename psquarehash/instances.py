@@ -1,11 +1,5 @@
 # instances.py
-# ---------------------------------------------------------------------------
-# Concrete, named parameter sets for pSquare-hash.
-#
-# Each entry is a ready-to-use pSquareHashParams instance pinned to a specific field
-# from utils/field.py, so every consumer agrees on the exact same parameters.
-# Naming convention: PSQUAREHASH_<FIELD>_<VARIANT>.
-# ---------------------------------------------------------------------------
+# Named parameter sets for pSquare-hash (<PREFIX>_<FIELD>_<VARIANT>).
 
 from utils.field import MERSENNE31
 from psquarehash.params import pSquareHashParams
@@ -120,5 +114,8 @@ CONSTANTS_MERSENNE_T24 = [
     [1427180358, 1016413495, 341575392, 1379016531, 1883525950, 1935471827, 1966200988, 1675507648, 1137471904, 1662916783, 1302227410, 1262555861],
 ]
 
-PSQUAREHASH_MERSENNE_T16  = pSquareHashParams(p=MERSENNE31.p, t=16, R=52, r=8, c=8, d=8, rcons=CONSTANTS_MERSENNE_T16)
-PSQUAREHASH_MERSENNE_T24  = pSquareHashParams(p=MERSENNE31.p, t=24, R=52, r=16, c=8, d=8, rcons=CONSTANTS_MERSENNE_T24)
+# t=16 has t = 2d, so the 2-to-1 truncation compression is defined; t=24 (t != 2d) has none.
+PSQUAREHASH_MERSENNE_T16  = pSquareHashParams(p=MERSENNE31.p, t=16, R=52, rcons=CONSTANTS_MERSENNE_T16,
+                                              sponge=dict(r=8, c=8, d=8))
+PSQUAREHASH_MERSENNE_T24  = pSquareHashParams(p=MERSENNE31.p, t=24, R=52, rcons=CONSTANTS_MERSENNE_T24,
+                                              sponge=dict(r=16, c=8, d=8))

@@ -1,13 +1,5 @@
 # params.py
-# ---------------------------------------------------------------------------
-# Parameter definition for Griffin: the GriffinParams class.
-#
-# GriffinParams is the single source of truth for an instance. It sanitizes
-# user-facing parameters and expands them into a fully-specified instance that
-# the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper. Settings that depart from 
-# the recommended ones raise a ParamRecommendationWarning rather than an error.
-# ---------------------------------------------------------------------------
+# GriffinParams: the fully-specified parameter set for Griffin (single source of truth per instance).
 
 # Structural imports
 from recommendations import recommend
@@ -20,7 +12,6 @@ from sage.all import GF, Integer, legendre_symbol
 # Custom imports
 from utils.matrix import m4_to_block_circulant_matrix, circulant, map_nested, invert_matrix
 from utils.sampler import XOFFieldElementSampler
-from utils.mode import SpongeLE
 from utils.complexities import gb_comp
 
 # ---------------------------------------------------------------------------
@@ -34,6 +25,10 @@ GRIFFIN_M = {3: circulant([2, 1, 1])}
 
 
 class GriffinParams:
+    """Single instance spec for Griffin, read by the permutation (GriffinPerm) and the mode
+    functions (GriffinHash / GriffinCompress). Carries the permutation parameters plus the
+    per-mode parameter dicts `sponge` and `comp`; the permutation ignores them."""
+
     def __init__(
         self,
         p:         int,
@@ -44,10 +39,10 @@ class GriffinParams:
         rcons:     list[list[int]] = None,
         coeffs_G:  list[list[int]] = None,
         M:         list[list[int]] = None,
-        # Sponge parameters (derived if not provided)
-        r:         int = None,
-        c:         int = None,
-        d:         int = None,
+        # Modes of operation: per-mode parameter dicts, or None if the instance defines no
+        # such mode. sponge = dict(r=.., c=.., d=..); comp = dict(a=2) (2-to-1) / ...
+        sponge:    dict = None,
+        comp:      dict = None,
         # Target security level (default 128 bits)
         kappa:     int = 128,
         toy:       bool = False,
@@ -63,15 +58,14 @@ class GriffinParams:
         rcons     : (R-1)xt round constants (the final round has none); generated via SHAKE128 if not provided
         coeffs_G  : (t-2) [a, b] pairs for the quadratic maps G_i; generated via SHAKE128 if not provided
         M         : mixing matrix (txt); generated via _init_mat if not provided
-        r         : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
-        c         : capacity (number of inner state elements for sponge); derived if not provided
-        d         : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        sponge    : sponge params dict dict(r, c, d), or None for no sponge
+        comp      : compression params dict (e.g. dict(a=2) for 2-to-1), or None
         kappa     : target security level in bits (default 128)
         toy       : if True, recommendation-level checks warn instead of raising (default False)
         """
 
         # Input sanitization
-        GriffinParams._input_sanitization(SimpleNamespace(**{k: v for k, v in locals().items() if k != "self"}))
+        self._input_sanitization(SimpleNamespace(**{k: v for k, v in locals().items() if k != "self"}))
 
         # General settings
         self.p = p
@@ -80,8 +74,9 @@ class GriffinParams:
         self.kappa = kappa
         self.toy = toy
 
-        # Sponge parameters
-        self.sponge = SpongeLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+        # Modes of operation: per-mode param dicts (consumed by the mode functions, not the
+        # permutation). None means the instance does not define that mode.
+        self.sponge, self.comp = sponge, comp
 
         # Non-linear layer
         self.alpha = alpha

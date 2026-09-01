@@ -1,11 +1,5 @@
 # instances.py
-# ---------------------------------------------------------------------------
-# Concrete, named parameter sets for Arion.
-#
-# Each entry is a ready-to-use ArionParams instance pinned to a specific field
-# from utils/field.py, so every consumer agrees on the exact same parameters.
-# Naming convention: ARION_<FIELD>_<VARIANT>.
-# ---------------------------------------------------------------------------
+# Named parameter sets for Arion (<PREFIX>_<FIELD>_<VARIANT>).
 
 from utils.field import BLS12_381_SCALAR
 from arion.params import ArionParams
@@ -20,7 +14,5 @@ ARION_BLS12_T3 = ArionParams(
     R=6,
     alpha1=5,
     alpha2=257,
-    r=2,
-    c=1,
-    d=2,
+    sponge=dict(r=2, c=1, d=2),
 )

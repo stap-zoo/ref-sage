@@ -1,11 +1,5 @@
 # instances.py
-# ---------------------------------------------------------------------------
-# Concrete, named parameter sets for Anemoi.
-#
-# Each entry is a ready-to-use AnemoiParams instance pinned to a specific field
-# from utils/field.py, so every consumer agrees on the exact same parameters.
-# Naming convention: ANEMOI_<FIELD>_<VARIANT> (T<state size>).
-# ---------------------------------------------------------------------------
+# Named parameter sets for Anemoi (<PREFIX>_<FIELD>_<VARIANT>).
 
 from utils.field import (
     BLS12_381_BASE, BLS12_381_SCALAR,
@@ -31,9 +25,7 @@ ANEMOI_BLS12_381_BASE_T2 = AnemoiParams(
     alpha=BLS12_381_BASE.alpha,
     g=BLS12_381_BASE.generator,
     R=21,
-    r=1,
-    c=1,
-    d=1,
+    sponge=dict(r=1, c=1, d=1),
 )
 
 ANEMOI_BLS12_381_BASE_T4 = AnemoiParams(
@@ -42,9 +34,7 @@ ANEMOI_BLS12_381_BASE_T4 = AnemoiParams(
     alpha=BLS12_381_BASE.alpha,
     g=BLS12_381_BASE.generator,
     R=14,
-    r=3,
-    c=1,
-    d=1,
+    sponge=dict(r=3, c=1, d=1),
 )
 
 ANEMOI_BLS12_381_BASE_T6 = AnemoiParams(
@@ -53,9 +43,7 @@ ANEMOI_BLS12_381_BASE_T6 = AnemoiParams(
     alpha=BLS12_381_BASE.alpha,
     g=BLS12_381_BASE.generator,
     R=12,
-    r=5,
-    c=1,
-    d=1,
+    sponge=dict(r=5, c=1, d=1),
 )
 
 # ---------------------------------------------------------------------------
@@ -68,9 +56,7 @@ ANEMOI_BLS12_381_SCALAR_T2 = AnemoiParams(
     alpha=BLS12_381_SCALAR.alpha,
     g=BLS12_381_SCALAR.generator,
     R=21,
-    r=1,
-    c=1,
-    d=1,
+    sponge=dict(r=1, c=1, d=1),
 )
 
 ANEMOI_BLS12_381_SCALAR_T4 = AnemoiParams(
@@ -79,9 +65,7 @@ ANEMOI_BLS12_381_SCALAR_T4 = AnemoiParams(
     alpha=BLS12_381_SCALAR.alpha,
     g=BLS12_381_SCALAR.generator,
     R=14,
-    r=3,
-    c=1,
-    d=1,
+    sponge=dict(r=3, c=1, d=1),
 )
 
 ANEMOI_BLS12_381_SCALAR_T6 = AnemoiParams(
@@ -90,9 +74,7 @@ ANEMOI_BLS12_381_SCALAR_T6 = AnemoiParams(
     alpha=BLS12_381_SCALAR.alpha,
     g=BLS12_381_SCALAR.generator,
     R=12,
-    r=5,
-    c=1,
-    d=1,
+    sponge=dict(r=5, c=1, d=1),
 )
 
 # ---------------------------------------------------------------------------
@@ -105,9 +87,7 @@ ANEMOI_BLS12_377_BASE_T2 = AnemoiParams(
     alpha=BLS12_377_BASE.alpha,
     g=BLS12_377_BASE.generator,
     R=21,
-    r=1,
-    c=1,
-    d=1,
+    sponge=dict(r=1, c=1, d=1),
 )
 
 ANEMOI_BLS12_377_BASE_T4 = AnemoiParams(
@@ -116,9 +96,7 @@ ANEMOI_BLS12_377_BASE_T4 = AnemoiParams(
     alpha=BLS12_377_BASE.alpha,
     g=BLS12_377_BASE.generator,
     R=14,
-    r=3,
-    c=1,
-    d=1,
+    sponge=dict(r=3, c=1, d=1),
 )
 
 ANEMOI_BLS12_377_BASE_T6 = AnemoiParams(
@@ -127,9 +105,7 @@ ANEMOI_BLS12_377_BASE_T6 = AnemoiParams(
     alpha=BLS12_377_BASE.alpha,
     g=BLS12_377_BASE.generator,
     R=12,
-    r=5,
-    c=1,
-    d=1,
+    sponge=dict(r=5, c=1, d=1),
 )
 
 # ---------------------------------------------------------------------------
@@ -142,9 +118,7 @@ ANEMOI_BLS12_377_SCALAR_T2 = AnemoiParams(
     alpha=BLS12_377_SCALAR.alpha,
     g=BLS12_377_SCALAR.generator,
     R=19,
-    r=1,
-    c=1,
-    d=1,
+    sponge=dict(r=1, c=1, d=1),
 )
 
 ANEMOI_BLS12_377_SCALAR_T4 = AnemoiParams(
@@ -153,9 +127,7 @@ ANEMOI_BLS12_377_SCALAR_T4 = AnemoiParams(
     alpha=BLS12_377_SCALAR.alpha,
     g=BLS12_377_SCALAR.generator,
     R=13,
-    r=3,
-    c=1,
-    d=1,
+    sponge=dict(r=3, c=1, d=1),
 )
 
 ANEMOI_BLS12_377_SCALAR_T6 = AnemoiParams(
@@ -164,9 +136,7 @@ ANEMOI_BLS12_377_SCALAR_T6 = AnemoiParams(
     alpha=BLS12_377_SCALAR.alpha,
     g=BLS12_377_SCALAR.generator,
     R=11,
-    r=5,
-    c=1,
-    d=1,
+    sponge=dict(r=5, c=1, d=1),
 )
 
 # ---------------------------------------------------------------------------
@@ -179,9 +149,7 @@ ANEMOI_BN254_BASE_T2 = AnemoiParams(
     alpha=BN254_BASE.alpha,
     g=BN254_BASE.generator,
     R=21,
-    r=1,
-    c=1,
-    d=1,
+    sponge=dict(r=1, c=1, d=1),
 )
 
 ANEMOI_BN254_BASE_T4 = AnemoiParams(
@@ -190,9 +158,7 @@ ANEMOI_BN254_BASE_T4 = AnemoiParams(
     alpha=BN254_BASE.alpha,
     g=BN254_BASE.generator,
     R=14,
-    r=3,
-    c=1,
-    d=1,
+    sponge=dict(r=3, c=1, d=1),
 )
 
 ANEMOI_BN254_BASE_T6 = AnemoiParams(
@@ -201,9 +167,7 @@ ANEMOI_BN254_BASE_T6 = AnemoiParams(
     alpha=BN254_BASE.alpha,
     g=BN254_BASE.generator,
     R=12,
-    r=5,
-    c=1,
-    d=1,
+    sponge=dict(r=5, c=1, d=1),
 )
 
 # ---------------------------------------------------------------------------
@@ -216,9 +180,7 @@ ANEMOI_BN254_SCALAR_T2 = AnemoiParams(
     alpha=BN254_SCALAR.alpha,
     g=BN254_SCALAR.generator,
     R=21,
-    r=1,
-    c=1,
-    d=1,
+    sponge=dict(r=1, c=1, d=1),
 )
 
 ANEMOI_BN254_SCALAR_T4 = AnemoiParams(
@@ -227,9 +189,7 @@ ANEMOI_BN254_SCALAR_T4 = AnemoiParams(
     alpha=BN254_SCALAR.alpha,
     g=BN254_SCALAR.generator,
     R=14,
-    r=3,
-    c=1,
-    d=1,
+    sponge=dict(r=3, c=1, d=1),
 )
 
 ANEMOI_BN254_SCALAR_T6 = AnemoiParams(
@@ -238,9 +198,7 @@ ANEMOI_BN254_SCALAR_T6 = AnemoiParams(
     alpha=BN254_SCALAR.alpha,
     g=BN254_SCALAR.generator,
     R=12,
-    r=5,
-    c=1,
-    d=1,
+    sponge=dict(r=5, c=1, d=1),
 )
 
 # ---------------------------------------------------------------------------
@@ -253,9 +211,7 @@ ANEMOI_PALLAS_T2 = AnemoiParams(
     alpha=PALLAS.alpha,
     g=PALLAS.generator,
     R=21,
-    r=1,
-    c=1,
-    d=1,
+    sponge=dict(r=1, c=1, d=1),
 )
 
 ANEMOI_PALLAS_T4 = AnemoiParams(
@@ -264,9 +220,7 @@ ANEMOI_PALLAS_T4 = AnemoiParams(
     alpha=PALLAS.alpha,
     g=PALLAS.generator,
     R=14,
-    r=3,
-    c=1,
-    d=1,
+    sponge=dict(r=3, c=1, d=1),
 )
 
 ANEMOI_PALLAS_T6 = AnemoiParams(
@@ -275,9 +229,7 @@ ANEMOI_PALLAS_T6 = AnemoiParams(
     alpha=PALLAS.alpha,
     g=PALLAS.generator,
     R=12,
-    r=5,
-    c=1,
-    d=1,
+    sponge=dict(r=5, c=1, d=1),
 )
 
 # ---------------------------------------------------------------------------
@@ -290,9 +242,7 @@ ANEMOI_VESTA_T2 = AnemoiParams(
     alpha=VESTA.alpha,
     g=VESTA.generator,
     R=21,
-    r=1,
-    c=1,
-    d=1,
+    sponge=dict(r=1, c=1, d=1),
 )
 
 ANEMOI_VESTA_T4 = AnemoiParams(
@@ -301,9 +251,7 @@ ANEMOI_VESTA_T4 = AnemoiParams(
     alpha=VESTA.alpha,
     g=VESTA.generator,
     R=14,
-    r=3,
-    c=1,
-    d=1,
+    sponge=dict(r=3, c=1, d=1),
 )
 
 ANEMOI_VESTA_T6 = AnemoiParams(
@@ -312,9 +260,7 @@ ANEMOI_VESTA_T6 = AnemoiParams(
     alpha=VESTA.alpha,
     g=VESTA.generator,
     R=12,
-    r=5,
-    c=1,
-    d=1,
+    sponge=dict(r=5, c=1, d=1),
 )
 
 # ---------------------------------------------------------------------------
@@ -327,9 +273,7 @@ ANEMOI_GOLDILOCKS_T8 = AnemoiParams(
     alpha=GOLDILOCKS.alpha,
     g=GOLDILOCKS.generator,
     R=11,
-    r=4,
-    c=4,
-    d=4,
+    sponge=dict(r=4, c=4, d=4),
 )
 
 ANEMOI_GOLDILOCKS_T10 = AnemoiParams(
@@ -338,9 +282,7 @@ ANEMOI_GOLDILOCKS_T10 = AnemoiParams(
     alpha=GOLDILOCKS.alpha,
     g=GOLDILOCKS.generator,
     R=11,
-    r=6,
-    c=4,
-    d=4,
+    sponge=dict(r=6, c=4, d=4),
 )
 
 ANEMOI_GOLDILOCKS_T12 = AnemoiParams(
@@ -349,7 +291,5 @@ ANEMOI_GOLDILOCKS_T12 = AnemoiParams(
     alpha=GOLDILOCKS.alpha,
     g=GOLDILOCKS.generator,
     R=10,
-    r=8,
-    c=4,
-    d=4,
+    sponge=dict(r=8, c=4, d=4),
 )

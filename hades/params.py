@@ -1,14 +1,5 @@
 # params.py
-# ---------------------------------------------------------------------------
-# Parameter definitions for the Hades family: HadesParams and its subclasses
-# PoseidonParams, Poseidon2Params and NeptuneParams.
-#
-# Each params class is the single source of truth for an instance. It sanitizes
-# user-facing parameters and expands them into a fully-specified instance that
-# the permutation, hash modes, instances and tests consume. Any value the user
-# omits is filled in by the matching _init_* helper. Settings that depart from 
-# the recommended ones raise a ParamRecommendationWarning rather than an error.
-# ---------------------------------------------------------------------------
+# HadesParams, PoseidonParams, Poseidon2Params, NeptuneParams: the fully-specified parameter set for Hades (single source of truth per instance).
 
 # Structural imports
 from recommendations import recommend
@@ -21,7 +12,6 @@ from sage.all import GF, Integer
 # Custom imports
 from utils.sampler import LFSRFieldElementSampler, XOFFieldElementSampler
 from utils.matrix import cauchy_mds_matrix, circulant, m4_to_block_circulant_matrix, dl_m44_84_matrix, ones_plus_diag_matrix, map_nested, invert_matrix
-from utils.mode import SpongeLE
 
 # ---------------------------------------------------------------------------
 # Grain LFSR settings (used by Poseidon/Poseidon2)
@@ -121,10 +111,9 @@ class HadesParams:
         R_ext_beg: int = None,
         R_ext_end: int = None,
         u: int = 1,
-        # Sponge parameters (derived if not provided)
-        r: int = None,
-        c: int = None,
-        d: int = None,
+        # Modes of operation: per-mode param dicts (or None). sponge=dict(r,c,d); comp=dict(a=2).
+        sponge: dict = None,
+        comp: dict = None,
         # Target security level (default 128 bits)
         kappa: int = 128,
         toy: bool = False,
@@ -144,9 +133,8 @@ class HadesParams:
         R_ext_beg       : number of external rounds before the internal rounds; default R_ext // 2
         R_ext_end       : number of external rounds after the internal rounds; default R_ext - R_ext_beg
         u               : number of branches the S-box hits in internal rounds; default 1
-        r               : rate (number of outer state elements absorbed/squeezed per sponge step); derived if not provided
-        c               : capacity (number of inner state elements for sponge); derived if not provided
-        d               : digest size for generic fixed-output sponge (number of output elements); derived if not provided
+        sponge          : sponge params dict dict(r, c, d), or None for no sponge
+        comp            : compression params dict (e.g. dict(a=2)), or None
         kappa           : target security level in bits (default 128)
         toy             : if True, recommendation-level checks warn instead of raising (default False)
         """
@@ -161,8 +149,8 @@ class HadesParams:
         self.kappa = kappa
         self.toy = toy
 
-        # Sponge parameters
-        self.sponge = SpongeLE(kappa=kappa, p=p, t=t, r=r, c=c, d=d, to_field=self.to_field, toy=toy)
+        # Modes of operation: per-mode param dicts (consumed by the mode functions).
+        self.sponge, self.comp = sponge, comp
 
         # Rounds
         if R_ext is None or R_int is None:
@@ -300,13 +288,13 @@ class PoseidonParams(HadesParams):
 
     MDS_STRATEGIES = ("sampled", "fixed")
 
-    def __init__(self, *, p, t, alpha, R_ext, R_int, r=None, c=None, d=None,
+    def __init__(self, *, p, t, alpha, R_ext, R_int, sponge=None, comp=None,
                  R_ext_beg=None, R_ext_end=None, version="isec", mds_strategy="sampled",
                  M=None, rcons=None, u=1, kappa=128, toy=False):
         if mds_strategy not in self.MDS_STRATEGIES:
-            raise ValueError(f"Unknown mds_strategy {mds_strategy!r}. Use one of {self.MDS_STRATEGIES}.")
+            raise ValueError(f"Unknown mds_strategy {mds_strategy}. Use one of {self.MDS_STRATEGIES}.")
         self.mds_strategy = mds_strategy
-        super().__init__(p=p, t=t, alpha=alpha, R_ext=R_ext, R_int=R_int, r=r, c=c, d=d, version=version,
+        super().__init__(p=p, t=t, alpha=alpha, R_ext=R_ext, R_int=R_int, sponge=sponge, comp=comp, version=version,
                          M_ext=M, M_int=M, rcons=rcons,
                          R_ext_beg=R_ext_beg, R_ext_end=R_ext_end, u=u, kappa=kappa, toy=toy)
         self.M = self.M_ext  # alias (single MDS)
@@ -342,11 +330,11 @@ class Poseidon2Params(HadesParams):
     in external rounds and only the first u branches in internal rounds.
     mat_diag is the MAT_DIAG_M_1 vector (defaulted for t in {2,3}, supplied per instance otherwise)."""
 
-    def __init__(self, *, p, t, alpha, R_ext, R_int, r=None, c=None, d=None,
+    def __init__(self, *, p, t, alpha, R_ext, R_int, sponge=None, comp=None,
                  R_ext_beg=None, R_ext_end=None, version="isec",
                  M_ext=None, rcons=None, mat_diag=None, u=1, kappa=128, toy=False):
         self.mat_diag = mat_diag
-        super().__init__(p=p, t=t, alpha=alpha, R_ext=R_ext, R_int=R_int, r=r, c=c, d=d, version=version,
+        super().__init__(p=p, t=t, alpha=alpha, R_ext=R_ext, R_int=R_int, sponge=sponge, comp=comp, version=version,
                          rcons=rcons, M_ext=M_ext, M_int=None, # M_int is always J + diag(mat_diag)
                          R_ext_beg=R_ext_beg, R_ext_end=R_ext_end, u=u, kappa=kappa, toy=toy)
 
@@ -402,12 +390,12 @@ class NeptuneParams(HadesParams):
     constant applied as output whitening in the permutation's _post_rounds; the leading external
     matrix is applied by _pre_rounds."""
 
-    def __init__(self, *, p, t, alpha, R_ext, R_int, r=None, c=None, d=None,
+    def __init__(self, *, p, t, alpha, R_ext, R_int, sponge=None, comp=None,
                  R_ext_beg=None, R_ext_end=None, M_ext=None, rcons=None, mat_diag=None, u=1, kappa=128, toy=False):
         if t % 2 != 0:
             raise ValueError("Neptune state size t must be even")
         self.mat_diag = mat_diag
-        super().__init__(p=p, t=t, alpha=alpha, R_ext=R_ext, R_int=R_int, r=r, c=c, d=d,
+        super().__init__(p=p, t=t, alpha=alpha, R_ext=R_ext, R_int=R_int, sponge=sponge, comp=comp,
                          M_ext=M_ext, rcons=rcons,           # M_int is always J + diag(mat_diag)
                          R_ext_beg=R_ext_beg, R_ext_end=R_ext_end, u=u, kappa=kappa, toy=toy)
         # gamma is the next nonzero SHAKE draw after the internal-matrix diagonal mu.

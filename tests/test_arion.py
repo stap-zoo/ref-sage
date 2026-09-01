@@ -14,7 +14,7 @@ import warnings
 
 import pytest
 
-from arion.hash import Arion
+from arion.hash import ArionPerm, ArionHash
 from arion.params import ArionParams
 from arion.instances import ARION_BLS12_T3
 from utils.field import BLS12_381_SCALAR
@@ -45,11 +45,11 @@ KATS = {
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_kat(name, params):
-    prim = Arion(params)
+    P = ArionPerm(params)
     kat = KATS[name]
-    inp = [prim.to_field(x) for x in kat["input"]]
-    out = prim.permutation(inp)
-    assert [prim.from_field(x) for x in out] == kat["output"]
+    inp = [P.to_field(x) for x in kat["input"]]
+    out = P.permute(inp)
+    assert [P.from_field(x) for x in out] == kat["output"]
 
 
 # ---------------------------------------------------------------------------
@@ -58,22 +58,22 @@ def test_permutation_kat(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_roundtrip(name, params):
-    prim = Arion(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = ArionPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_layer_roundtrip(name, params):
     # Each component layer must be undone by its _inv partner, for every round.
-    prim = Arion(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(prim.R):
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
-        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
-        assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+    P = ArionPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(P.R):
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
+        assert P.constant_addition_inv(P.constant_addition(inp, r), r) == inp
+        assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 
 # ---------------------------------------------------------------------------
@@ -82,28 +82,29 @@ def test_layer_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_deterministic(name, params):
-    prim = Arion(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = ArionPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_permutation_distinct_inputs(name, params):
-    prim = Arion(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = ArionPerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
 def test_sponge_output_size(name, params):
-    prim = Arion(params)
-    data = [prim.F.random_element() for _ in range(prim.sponge.r)]
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
-    data = [prim.F.random_element() for _ in range(prim.sponge.r * 3)]
-    assert len(prim.hash_sponge(data)) == prim.sponge.d
+    P = ArionPerm(params)
+    H = ArionHash(P, params.sponge)
+    data = [P.F.random_element() for _ in range(params.sponge["r"])]
+    assert len(H.hash(data)) == H.sponge.d
+    data = [P.F.random_element() for _ in range(params.sponge["r"] * 3)]
+    assert len(H.hash(data)) == H.sponge.d
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +126,7 @@ def test_generated_matches_instance(name, params):
     # Rebuilding the params without M / constants must reproduce the pinned instance.
     derived = ArionParams(p=params.p, t=params.t, R=params.R,
                           alpha1=params.alpha1, alpha2=params.alpha2,
-                          r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                          sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
     assert derived.M == params.M
     assert derived.rcons == params.rcons
     assert derived.coeffs_g == params.coeffs_g
@@ -137,7 +138,7 @@ def test_generated_matches_instance(name, params):
 def test_rounds_derivation_matches_instance(name, params):
     derived = ArionParams(p=params.p, t=params.t,
                           alpha1=params.alpha1, alpha2=params.alpha2,
-                          r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)  # R omitted -> _init_rounds
+                          sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))  # R omitted -> _init_rounds
     assert derived.R == params.R
 
 
@@ -146,20 +147,20 @@ def test_rounds_derivation_matches_instance(name, params):
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = Arion(ARION_BLS12_T3)
+    P = ArionPerm(ARION_BLS12_T3)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
+        P.permute([P.F.zero()] * (P.t + 1))
 
 
 def test_alpha_must_be_permutation():
     # An explicit alpha1 not coprime with p-1 must be rejected by params.
     with pytest.raises(ValueError):
-        ArionParams(p=BLS12_381_SCALAR.p, t=3, R=6, alpha1=4, alpha2=257, r=2, c=1, d=2)
+        ArionParams(p=BLS12_381_SCALAR.p, t=3, R=6, alpha1=4, alpha2=257, sponge=dict(r=2, c=1, d=2))
 
 
 def test_toy_field_warns():
     with pytest.warns(ParamRecommendationWarning):
-        ArionParams(p=101, t=3, R=6, r=2, c=1, d=1, toy=True)  # tiny field
+        ArionParams(p=101, t=3, R=6, sponge=dict(r=2, c=1, d=1), toy=True)  # tiny field
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=[name for name, _ in INSTANCES])
@@ -168,13 +169,13 @@ def test_recommended_instance_no_warning(name, params):
         warnings.simplefilter("error", ParamRecommendationWarning)
         ArionParams(p=params.p, t=params.t, R=params.R,
                     alpha1=params.alpha1, alpha2=params.alpha2,
-                    r=params.sponge.r, c=params.sponge.c, d=params.sponge.d)
+                    sponge=dict(r=params.sponge["r"], c=params.sponge["c"], d=params.sponge["d"]))
 
 
 def test_constants_reproducible():
     # Same parameters -> identical derived constants and matrix.
-    x = ArionParams(p=BLS12_381_SCALAR.p, t=3, R=6, alpha1=5, alpha2=257, r=2, c=1, d=2)
-    y = ArionParams(p=BLS12_381_SCALAR.p, t=3, R=6, alpha1=5, alpha2=257, r=2, c=1, d=2)
+    x = ArionParams(p=BLS12_381_SCALAR.p, t=3, R=6, alpha1=5, alpha2=257, sponge=dict(r=2, c=1, d=2))
+    y = ArionParams(p=BLS12_381_SCALAR.p, t=3, R=6, alpha1=5, alpha2=257, sponge=dict(r=2, c=1, d=2))
     assert x.rcons == y.rcons
     assert x.coeffs_g == y.coeffs_g
     assert x.coeffs_h == y.coeffs_h

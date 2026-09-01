@@ -1,45 +1,11 @@
-# permutation.py
-# ---------------------------------------------------------------------------
-# MyPrimitive: the permutation (round function) and the hash modes built on it.
-#
-# Construct it from a fully-specified MyPrimitiveParams object; this class only
-# *applies* the parameters, it never derives or validates them (that already
-# happened in params.py). The design goal is fidelity to the specification, not
-# speed: the code should read like the paper so it can be checked against it and
-# reused for cryptanalysis. Efficiency is explicitly a non-goal.
-#
-# Cryptanalysis / symbolic evaluation: the components are written GENERICALLY --
-# they use only ring operations (+, -, *, **) and never inspect or branch on the
-# VALUE of a state element (branching on the round index r is fine; r is a known
-# integer). So the same permutation runs not only on field elements but on
-# elements of a polynomial ring over F: pass the generators of
-# PolynomialRing(F, 'x', t) as the state to get the output as polynomials in the
-# inputs (for degree growth, Groebner-basis modeling, ...). Never call to_field /
-# from_field on intermediate values inside a component -- that would coerce a
-# symbolic input back into F and break this.
-#
-# Layout:
-#   * Component layers (constant_addition, linear_layer, nonlinear_layer, ...):
-#     each is ONE SPN operation on the whole state. Every layer takes the round
-#     index r, so a layer whose behaviour changes per round can branch on it;
-#     round-independent layers simply ignore r. The uniform (state, r) -> state
-#     signature lets the round loop treat every layer identically. Each forward
-#     layer has an `_inv` partner that undoes it for the same r.
-#   * Pre-/post-round steps (_pre_rounds / _post_rounds): one-off work done once
-#     outside the loop (e.g. an initial linear map). Not per-round, so no r.
-#   * permutation / permutation_inv: the round loop.
-#   * Hash modes: sponge / compression wrappers around the permutation.
-#
-# Two ORTHOGONAL notions of "round-dependence" deliberately live in separate
-# places -- keep them separate when you adapt this:
-#   - WHAT a layer does in round r             -> inside the layer, keyed by r
-#   - In WHICH ORDER the layers run in round r -> in the permutation loop
-# ---------------------------------------------------------------------------
+# hash.py
+# MyPrimitive: MyPrimitivePerm (permutation) and its mode functions (MyPrimitiveHash, MyPrimitiveCompress).
 
 from myprimitive.params import MyPrimitiveParams
 from utils.matrix import matvecmul, vecadd, vecsub
+from utils.primitive import Permutation, HashFunction, CompressionFunction
 
-class MyPrimitive:
+class MyPrimitivePerm(Permutation):
     # ---------------------------------------------------------------------------
     # Initialization
     # ---------------------------------------------------------------------------
@@ -48,12 +14,8 @@ class MyPrimitive:
         # Copy the fully-specified values out of the params object. This class is
         # a pure consumer of params; nothing is derived or checked here.
 
-        # General settings
-        self.F = params.F
-        self.to_field = params.to_field
-        self.from_field = params.from_field
-        self.t = params.t
-        self.kappa = params.kappa
+        # General settings (F, to_field, from_field, t, p, kappa, toy copied by Permutation)
+        super().__init__(params)
 
         # Rounds
         self.R = params.R
@@ -68,9 +30,6 @@ class MyPrimitive:
 
         # Round constants
         self.rcons = params.rcons
-
-        # Hash modes
-        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component layers
@@ -154,7 +113,7 @@ class MyPrimitive:
     # round-dependent too -- most primitives use one fixed order for all rounds.
     # ---------------------------------------------------------------------------
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -174,7 +133,7 @@ class MyPrimitive:
 
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -198,29 +157,22 @@ class MyPrimitive:
 
         return self._pre_rounds_inv(state)
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    #
-    # Thin wrappers that turn the permutation into a hash / compression function.
-    # The mode logic and padding rules live in utils/mode.py and are shared across
-    # primitives; these methods just call into it with this primitive's
-    # parameters. Not every primitive defines every mode.
-    # ---------------------------------------------------------------------------
 
-    def hash_sponge(self, data: list) -> list:
-        # Sponge hash as defined in MyPrimitiveParams.
-        return self.sponge.hash(self.permutation, data)
+# ---------------------------------------------------------------------------
+# Hash / compression functions
+#
+# MyPrimitivePerm above is JUST the permutation. Each mode of operation is its own function
+# object wrapping a permutation, loaded independently:
+#     P = MyPrimitivePerm(params)
+#     H = MyPrimitiveHash(P, params.sponge)      # plain (pad10*) sponge:  H.permute, H.hash
+#     C = MyPrimitiveCompress(P, params.comp)    # truncation compression: C.permute, C.compress
+# The class pins only the mode KIND; the sizes come from the params dict passed in, which must
+# be non-None (else construction raises). A second sponge variant would just be another
+# HashFunction subclass with a different SPONGE_KIND.
+# ---------------------------------------------------------------------------
 
-    def compress(self, data: list, digest: int = None) -> list:
-        """General state-to-digest compression. Not all primitives define this."""
-        d = self.sponge.d # TODO replace with compression digest (usually the same)
-        d = d if digest is None else digest
-        if len(data) != self.t:
-            raise ValueError(f"compression input must fill the state: expected {self.t}, got {len(data)}")
-        
-        return compress()
+class MyPrimitiveHash(HashFunction):
+    SPONGE_KIND = "plain"      # Bertoni et al. sponge with pad10*
 
-    def compress_2_to_1(self, x: list, y: list) -> list:
-        # 2-to-1 compression (or 3-to-1, etc.), defined either via the `compress`
-        # function above or via the sponge.
-        raise NotImplementedError
+class MyPrimitiveCompress(CompressionFunction):
+    COMP_KIND = "trunc"        # truncation compression mode M = I_{d x t}

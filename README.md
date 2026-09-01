@@ -1,30 +1,67 @@
-# ref
+# ref-sage
 Python/Sage reference implementations of STAP primitives, intended for correctness verification of optimized implementations and reuse in cryptanalytic research.
 
 ## Structure
 
-Shared code lives in the `utils/` package plus one root-level module, `recommendations.py`:
+The whole library is built on one split: a hash is a **permutation** plus a **mode of operation**. A permutation knows nothing about hashing, a mode works on any permutation, and the two are combined by *composition*. Everything below follows from that.
 
-- **`utils/field.py`** the `Field` frozen dataclass and the predefined prime fields used across primitives (BLS12-381, BN254, ST, Goldilocks, Mersenne-31, Pallas/Vesta, ...). Each entry stores the characteristic `p`, extension degree `n` and bit size, the factorization of `p-1`, a multiplicative `generator`, and the smallest permutation exponent `alpha` with `gcd(alpha, p-1) = 1` together with its modular inverse `alpha_inv`.
-- **`utils/mode.py`** field-agnostic hash construction modes that can be instantiated by any permutation:
-  - The `Sponge` base class and its variants, each fixing an absorb/squeeze convention and padding rule: `SpongePlain`, `SpongeLE` (little-endian rate ordering), `SpongeCLE`, `Sponge2`, `SpongeRescue`, `SpongeRPO`, `SpongeHirose` (Hirose variant with a domain separator after the final absorption, used by Anemoi), `SpongePI` (*sponge-pi*, see [Lefevre et al., ToSC 2025](https://tosc.iacr.org/index.php/ToSC/article/view/12073)), and `SpongeSAFE` (Sponge API *SAFE* for Field Elements, see [Aumasson et al., ePrint](https://eprint.iacr.org/2023/522)).
-  - Compression functions: `compress_davies_meyer` Davies-Meyer compression `trunc(perm(x_m ∥ x_c) + (x_m ∥ x_c))`; `compress_jive` *Jive_b* compression `out[i] = sum_j (x[i+c*j] + perm(x)[i+c*j])`, see [Bouvier et al., CRYPTO 2023](https://eprint.iacr.org/2022/840) (Anemoi paper); `compress_trunc` truncation; and the generic `compress` dispatcher with `resolve_compression_params`.
-  - `pad_zero` / `pad_simple` padding rules used by the sponge and compression variants.
-- **`utils/matrix.py`** matrix/vector arithmetic, nested-list mapping, and MDS/diffusion-matrix constructions (circulant, Cauchy/Vandermonde, M4 block-circulant, ...).
-- **`utils/sampler.py`** deterministic field-element samplers (XOF-seeded) used to derive round constants reproducibly.
-- **`utils/lut.py`** lookup-table helpers for LUT-based constructions (Reinforced Concrete, Monolith, Skyscraper).
-- **`utils/complexities.py`** attack-complexity estimators (Gröbner-basis, differential, ...) used by the round-number derivations.
-- **`utils/poly.py`** multivariate-polynomial representations and coordinate polynomials of power maps, for algebraic cryptanalysis.
-- **`recommendations.py`** the `ParamRecommendationWarning` / `ModeRecommendationWarning` categories and the `recommend` helper: recommendation-level checks warn for toy instances and raise otherwise.
+### The object model (`utils/primitive.py`)
 
-Each primitive lives in its own folder and follows a common layout:
+Three base classes. A concrete primitive subclasses `Permutation`; the two mode classes are used as-is, each *wrapping* a permutation:
 
-- **`hash.py`** implements the permutation and higher-level hash modes (compression, sponge). Takes a concrete parameter instance as its constructor argument.
-- **`instances.py`** defines concrete instances (e.g. BLS12-381, BN254) by constructing a params object with the appropriate constants.
-- **`params.py`** defines the params class whose constructor validates and stores all numerical parameters. Every params class implements the same five-function contract (see `myprimitive/README.md` for details):
-  - `_input_sanitization` validates the raw constructor arguments (hard checks raise, deviations from the recommended settings warn with `ParamRecommendationWarning`);
-  - `_parameter_sanitization` validates the fully-constructed object (shapes and counts of the stored/derived values) as the constructor's last step;
-  - `_init_rounds` derives the round number(s), `_init_cons` the (round) constants, and `_init_mat` the matrix, whenever the user does not pass them explicitly. Derivations that are not worked out yet exist as stubs raising `NotImplementedError("Error: Not implemented -- ...")` with a `TODO` docstring.
+| Class | What it is | Exposes | Constructed from |
+|---|---|---|---|
+| `Permutation` | the bare round function `P: F_p^t → F_p^t` | `permute`, `permute_inv` | a `<Name>Params` object |
+| `HashFunction` | a permutation **+ a sponge** | `hash` | a `Permutation` + its `sponge` dict |
+| `CompressionFunction` | a permutation **+ a compression** | `compress` | a `Permutation` + its `comp` dict |
+
+A `HashFunction` / `CompressionFunction` is *not* a permutation and does not expose `permute` (the wrapped permutation is reachable as `.permutation` if needed). Each mode class pins only its **kind** as a class attribute (`SPONGE_KIND` / `COMP_KIND`); the actual sizes come from the instance's mode dict. Putting it together:
+
+```python
+from anemoi.hash import AnemoiPerm, AnemoiHash, AnemoiCompress
+from anemoi.instances import ANEMOI_BLS12_381_SCALAR_T2 as params
+
+P = AnemoiPerm(params)                 # the permutation
+H = AnemoiHash(P, params.sponge)       # sponge hash on top of it
+C = AnemoiCompress(P, params.comp)     # Jive compression on top of it
+digest = H.hash(data)                  # variable-length input -> d elements
+node   = C.compress(state)             # full t-element state   -> d elements
+```
+
+### Per-primitive files
+
+Each primitive lives in its own folder; all three files consume a single `<Name>Params` object:
+
+- **`params.py`**: `<Name>Params`, the single source of truth for an instance. The constructor sanitizes the user-facing arguments and fills in everything left unspecified, following the shared **five-function contract**: `_input_sanitization` (raw-argument checks: hard checks raise, deviations from the recommended settings warn with `ParamRecommendationWarning`), `_parameter_sanitization` (whole-object checks, run last), and `_init_rounds` / `_init_cons` / `_init_mat` (derive the round number, round constants, and matrix when not given). Unfinished derivations are stubs raising `NotImplementedError`. The mode parameters are stored as dicts, `sponge=dict(r, c, d)` and `comp=dict(...)`, each `None` when that mode is undefined for the instance. *(Full authoring walkthrough: `myprimitive/README.md`.)*
+- **`hash.py`**: the classes from the object model, specialized: `<Name>Perm(Permutation)` (the round function), `<Name>Hash(HashFunction)`, and, where the primitive defines one, `<Name>Compress(CompressionFunction)`. A pure consumer of params: it only *applies* the parameters, never derives or validates them.
+- **`instances.py`**: named `<Name>Params` instances, `<PREFIX>_<FIELD>_<VARIANT>` (e.g. `ANEMOI_BLS12_381_SCALAR_T2`). Most instances are sponge-only (`comp=None`); a primitive that is itself a compression function (e.g. Skyscraper) sets `comp` too.
+
+### Shared building blocks (`utils/` + `recommendations.py`)
+
+- **`utils/mode.py`**: the field-agnostic **mode catalog** that any permutation can be plugged into, plus the factories that build a mode from a *kind* string:
+  - `Sponge` and its variants, each fixing an absorb/squeeze convention and padding rule: `SpongePlain`, `SpongeLE` (little-endian rate ordering), `SpongeCLE`, `Sponge2`, `SpongeRescue`, `SpongeRPO`, `SpongeHirose` (Hirose variant with a domain separator after the final absorption, used by Anemoi), `SpongePI` (*sponge-pi*, see [Lefevre et al., ToSC 2025](https://tosc.iacr.org/index.php/ToSC/article/view/12073)), and `SpongeSAFE` (*SAFE* API for field elements, see [Aumasson et al., ePrint](https://eprint.iacr.org/2023/522)).
+  - `Compression` and its variants, all of the form `M·(P(x) + x)`: `Compression` (default `M = I_{d×t}` = truncation / Davies-Meyer) and `CompressionJive` (*Jive_b*, `M = [I_d | … | I_d]`, see [Bouvier et al., CRYPTO 2023](https://eprint.iacr.org/2022/840)). Compression *through a sponge* is not one of these, it is the `Sponge.compress` method (an `a·d → d` node using the sponge's capacity/squeeze), called directly as `H.sponge.compress(perm, state)`.
+  - The security floors are methods on the mode classes (`Sponge.get_min_capacity` / `get_min_digest`; `Compression.get_min_digest` / `get_min_trunc`): they warn on a toy mode and raise otherwise.
+  - The factories `make_sponge(kind, …)` / `make_compression(kind, …)` map a kind string to a built mode object; these are what `HashFunction` / `CompressionFunction` call internally.
+- **`utils/field.py`**: the `Field` frozen dataclass and the predefined prime fields (BLS12-381, BN254, ST, Goldilocks, Mersenne-31, Pallas/Vesta, ...). Each stores `p`, extension degree `n` and bit size, the factorization of `p-1`, a `generator`, and the smallest permutation exponent `alpha` with `gcd(alpha, p-1) = 1` plus its inverse `alpha_inv`.
+- **`utils/matrix.py`**: matrix/vector arithmetic and MDS/diffusion-matrix constructions (circulant, Cauchy/Vandermonde, M4 block-circulant, ...).
+- **`utils/sampler.py`**: deterministic (XOF-seeded) field-element samplers used to derive round constants reproducibly.
+- **`utils/lut.py`**: lookup-table helpers for LUT-based constructions (Reinforced Concrete, Monolith, Skyscraper).
+- **`utils/complexities.py`**: attack-complexity estimators (Gröbner-basis, differential, ...) used by the round-number derivations.
+- **`utils/poly.py`**: multivariate-polynomial representations and coordinate polynomials of power maps, for algebraic cryptanalysis.
+- **`recommendations.py`**: the `ParamRecommendationWarning` / `ModeRecommendationWarning` categories and the `recommend` helper: recommendation-level checks warn for toy instances and raise otherwise.
+
+### How to add a mode
+
+A mode is generic: implement it once in `utils/mode.py` and every primitive can use it. To add a **sponge** variant:
+
+1. **Subclass `Sponge`** in `utils/mode.py`. The base provides `hash`, size resolution, and the security floors; a variant overrides only what differs, the padding rule `pad(data, input_len_fixed, rate_aligned)` and, if its IV/domain-separation differs, `make_iv(...)`.
+2. **Register its kind** in the `_SPONGE_KINDS` dict (e.g. `"myhash": SpongeMyHash`).
+3. **Point a primitive at it** by setting `SPONGE_KIND = "myhash"` on that primitive's `<Name>Hash` class, or, per instance, with a `"kind"` key in the `sponge` dict (`sponge=dict(r=…, c=…, d=…, kind="myhash")`).
+
+Adding a **compression** variant is the same shape: subclass `Compression`, override `_default_M()` to return the `d×t` matrix that defines the mode (the base's `compress` computes `M·(P(x)+x)`), add a branch to `make_compression`, and set `COMP_KIND` on the primitive's `<Name>Compress` class. A compression realized *through a sponge* rather than a matrix is not a `Compression` mode at all, it is the `Sponge.compress` method (`a·d → d`), called directly as `H.sponge.compress(perm, state)` with no `Compress` class.
+
+In both cases the security floors come for free from the base class; a deliberately weak (toy) instance sets `toy=True` inside its mode dict, which turns floor violations from errors into warnings, independent of whether the permutation itself is a toy instance.
 
 ## Primitives
 
@@ -562,8 +599,8 @@ The code requires SageMath. How to invoke it depends on the installation:
 
 Besides SageMath itself, the following packages must be installed into the Python environment Sage uses:
 
-- **`blake3`** — XOF used to derive the Tip5 round constants (`utils.FieldElementSampler`).
-- **`pytest`** — only needed to run the test suite.
+- **`blake3`**: XOF used to derive the Tip5 round constants (`utils.FieldElementSampler`).
+- **`pytest`**: only needed to run the test suite.
 
 ```sh
 sage --pip install blake3 pytest   # standalone SageMath

@@ -1,29 +1,16 @@
 # hash.py
-# ---------------------------------------------------------------------------
-# Tip5 (and TIP4 / TIP4'): the permutation (round function) and the hash modes
-# built on it.
-#
-# Constructed from a fully-specified Tip5Params object.
-#
-# NOTE: the split-and-lookup S-box (_sl_sbox / _sl_sbox_inv, used by nonlinear_layer on
-# the first u branches) decomposes a field element into bytes and applies a
-# precomputed LUT. It is therefore inherently NON-generic -- it operates on the
-# integer representation and cannot run symbolically over a polynomial ring,
-# unlike the power-map branch of nonlinear_layer and the AffineLayer. This is a
-# deliberate exception to the "generic component" contract.
-# ---------------------------------------------------------------------------
+# Tip5: Tip5Perm, Tip4Perm, Tip4PrimePerm (permutation) and their mode functions (Tip5Hash; Tip4Hash, Tip4Compress; Tip4PrimeHash, Tip4PrimeCompress).
+# NOTE: uses a lookup-table S-box -- non-generic (cannot run symbolically over a polynomial ring).
 
 from tip5.params import Tip5Params, Tip4Params, Tip4PrimeParams
 from utils.matrix import matvecmul, vecadd, vecsub
 from utils.lut import mixed_radix_decompose, mixed_radix_compose
+from utils.primitive import Permutation, HashFunction, CompressionFunction
 
 
-class Tip5:
+class Tip5Perm(Permutation):
     def __init__(self, params: Tip5Params):
-        self.F = params.F
-        self.t = params.t
-        self.to_field = params.to_field
-        self.from_field = params.from_field
+        super().__init__(params)  # F, to_field, from_field, t, p, kappa, toy
 
         # Rounds
         self.R = params.R
@@ -43,8 +30,6 @@ class Tip5:
         self.M_inv = params.M_inv
         self.rcons = params.rcons
 
-        # Hash modes
-        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -101,7 +86,7 @@ class Tip5:
     # Permutation
     # ---------------------------------------------------------------------------
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -112,7 +97,7 @@ class Tip5:
             state = self.constant_addition(state, r)
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -123,53 +108,47 @@ class Tip5:
             state = self.nonlinear_layer_inv(state, r)
         return self._pre_rounds_inv(state)
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
-
-    def hash_sponge(self, data: list) -> list:
-        """Fixed-length hash: a single rate-sized block, capacity initialized to c_val=1."""
-        if len(data) != self.sponge.r:
-            raise ValueError(f"Invalid input size. Expected {self.sponge.r}, got {len(data)}")
-        return self.sponge.hash(self.permutation, data, input_len_fixed=True, c_val=1)
-
 
 # ---------------------------------------------------------------------------
-# Tip4 and Tip4'
+# Tip4 and Tip4' permutations. They share Tip5's round-function *structure* (the same
+# component layers and permute loop), but differ in several parameters, all carried by their
+# params classes: the state size t (Tip4: 16, Tip4': 12), the MDS matrix (Tip4' uses RPO's
+# circulant), the round-constant derivation label (rcons differ), the security level kappa, the
+# sponge sizes, and the mode set (Tip4/Tip4' add a Jive compression; Tip5 has none).
 # ---------------------------------------------------------------------------
 
-class Tip4(Tip5):
-
+class Tip4Perm(Tip5Perm):
     def __init__(self, params: Tip4Params):
         super().__init__(params)
 
-    def compress_4_to_1(self, x1: list, x2: list, x3: list, x4: list) -> list:
-        b = 4
-        m = self.t // b
-        inputs = [x1, x2, x3, x4] # b lists, each of size m = t/b
-        if any(len(xi) != m for xi in inputs):
-            raise ValueError(f"Invalid input sizes. Expected all of length {m}")
-        return compress_jive(
-            perm=self.permutation,
-            inputs=inputs,
-            b=b,
-            to_field=self.to_field,
-        )
-
-class Tip4Prime(Tip5):
-
-    def __init__(self, params: Tip4Params):
+class Tip4PrimePerm(Tip5Perm):
+    def __init__(self, params: Tip4PrimeParams):
         super().__init__(params)
 
-    def compress_3_to_1(self, x1: list, x2: list, x3: list) -> list:
-        b = 3
-        m = self.t // b
-        inputs = [x1, x2, x3] # b lists, each of size m = t/b
-        if any(len(xi) != m for xi in inputs):
-            raise ValueError(f"Invalid input sizes. Expected all of length {m}")
-        return compress_jive(
-            perm=self.permutation,
-            inputs=inputs,
-            b=b,
-            to_field=self.to_field,
-        )
+
+# ---------------------------------------------------------------------------
+# Hash / compression functions
+#
+# The permutations above are JUST permutations; each variant owns its mode functions. All three
+# hashes are the same length-encoded ("cle") sponge, called with fixed-length input, e.g.
+# H.hash(data, input_len_fixed=True, c_val=1). Only Tip4 / Tip4' define a compression -- Jive,
+# with the arity from the comp dict (Tip4: a=4, Tip4': a=3); Tip5 has NO compression:
+#     P = Tip5Perm(params);      H = Tip5Hash(P, params.sponge)                                  # Tip5: sponge only
+#     P = Tip4Perm(params);      H = Tip4Hash(P, params.sponge);      C = Tip4Compress(P, params.comp)       # Jive_4: 4m -> m
+#     P = Tip4PrimePerm(params); H = Tip4PrimeHash(P, params.sponge); C = Tip4PrimeCompress(P, params.comp)  # Jive_3: 3m -> m
+# ---------------------------------------------------------------------------
+
+class Tip5Hash(HashFunction):
+    SPONGE_KIND = "cle"
+
+class Tip4Hash(HashFunction):
+    SPONGE_KIND = "cle"
+
+class Tip4Compress(CompressionFunction):
+    COMP_KIND = "jive"        # Jive_4 (comp=dict(a=4))
+
+class Tip4PrimeHash(HashFunction):
+    SPONGE_KIND = "cle"
+
+class Tip4PrimeCompress(CompressionFunction):
+    COMP_KIND = "jive"        # Jive_3 (comp=dict(a=3))

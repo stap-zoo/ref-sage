@@ -17,7 +17,7 @@
 
 import pytest
 
-from marvellous.hash import XHash
+from marvellous.hash import XHashPerm, XHashHash
 from marvellous.params import XHashParams
 from marvellous.instances import (
     XHASH12_GOLDILOCKS_T12,
@@ -50,7 +50,7 @@ def _derive(inst, cpolys, skipbox, **override):
     left for the derivation helpers (unless overridden)."""
     kw = dict(
         p=inst.p, t=inst.t, alpha=int(inst.alpha), alpha_inv=inst.alpha_inv,
-        kappa=inst.kappa, r=inst.sponge.r, c=inst.sponge.c, R=inst.R, d=inst.sponge.d,
+        kappa=inst.kappa, sponge=dict(r=inst.sponge["r"], c=inst.sponge["c"], d=inst.sponge["d"]), R=inst.R,
         cpolys=cpolys, skipbox=skipbox, M=None, rcons=None,
     )
     kw.update(override)
@@ -132,18 +132,18 @@ SPONGE_KATS = {
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_kat(name, params):
-    prim = XHash(params)
-    inp = [prim.to_field(i) for i in range(prim.t)]
-    out = [int(prim.from_field(x)) for x in prim.permutation(inp)]
+    P = XHashPerm(params)
+    inp = [P.to_field(i) for i in range(P.t)]
+    out = [int(P.from_field(x)) for x in P.permute(inp)]
     assert out == PERM_KATS[name]
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_sponge_kat(name, params):
-    prim = XHash(params)
+    P = XHashPerm(params)
     for n, expected in SPONGE_KATS[name]:
-        inp = [prim.to_field(j) for j in range(n)]
-        out = [int(prim.from_field(x)) for x in prim.hash_sponge(inp)]
+        inp = [P.to_field(j) for j in range(n)]
+        out = [int(P.from_field(x)) for x in XHashHash(P, params.sponge).hash(inp)]
         assert out == expected, f"sponge KAT mismatch for input length {n}"
 
 
@@ -160,28 +160,28 @@ def test_sponge_kat(name, params):
 @pytest.mark.skip(reason="XHash _sbox_P3_inv not implemented; permutation_inv raises NotImplementedError")
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_roundtrip(name, params):
-    prim = XHash(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation_inv(prim.permutation(inp)) == inp
+    P = XHashPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute_inv(P.permute(inp)) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_inv_raises_not_implemented(name, params):
     # Documents the current behavior until _sbox_P3_inv is implemented.
-    prim = XHash(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
+    P = XHashPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
     with pytest.raises(NotImplementedError):
-        prim.permutation_inv(prim.permutation(inp))
+        P.permute_inv(P.permute(inp))
 
 
 @pytest.mark.skip(reason="XHash _sbox_P3_inv not implemented; the P3 rounds (r % 3 == 2) raise NotImplementedError")
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_p3_layer_roundtrip(name, params):
-    prim = XHash(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(int(1.5 * prim.R)):
+    P = XHashPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(int(1.5 * P.R)):
         if r % 3 == 2:
-            assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
+            assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
@@ -190,18 +190,18 @@ def test_layer_roundtrip(name, params):
     # The non-linear layer is only invertible for non-P3 rounds; the P3 rounds
     # (r % 3 == 2) hit the unimplemented extension S-box inverse (see the
     # skip-marked test_p3_layer_roundtrip above).
-    prim = XHash(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    for r in range(int(1.5 * prim.R)):
-        assert prim.constant_addition_inv(prim.constant_addition(inp, r), r) == inp
-        assert prim.linear_layer_inv(prim.linear_layer(inp, r), r) == inp
+    P = XHashPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    for r in range(int(1.5 * P.R)):
+        assert P.constant_addition_inv(P.constant_addition(inp, r), r) == inp
+        assert P.linear_layer_inv(P.linear_layer(inp, r), r) == inp
         if r % 3 == 2:
             with pytest.raises(NotImplementedError):
-                prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r)
+                P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r)
         else:
-            assert prim.nonlinear_layer_inv(prim.nonlinear_layer(inp, r), r) == inp
-    assert prim._pre_rounds_inv(prim._pre_rounds(inp)) == inp
-    assert prim._post_rounds_inv(prim._post_rounds(inp)) == inp
+            assert P.nonlinear_layer_inv(P.nonlinear_layer(inp, r), r) == inp
+    assert P._pre_rounds_inv(P._pre_rounds(inp)) == inp
+    assert P._post_rounds_inv(P._post_rounds(inp)) == inp
 
 
 # ---------------------------------------------------------------------------
@@ -210,26 +210,26 @@ def test_layer_roundtrip(name, params):
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_digest_size(name, params):
-    prim = XHash(params)
-    out = prim.hash_sponge([prim.to_field(0)])
-    assert len(out) == prim.sponge.r // 2 == prim.sponge.d
+    P = XHashPerm(params)
+    out = XHashHash(P, params.sponge).hash([P.to_field(0)])
+    assert len(out) == params.sponge["r"] // 2 == params.sponge["d"]
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_deterministic(name, params):
-    prim = XHash(params)
-    inp = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp) == prim.permutation(inp)
+    P = XHashPerm(params)
+    inp = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp) == P.permute(inp)
 
 
 @pytest.mark.parametrize("name,params", INSTANCES, ids=IDS)
 def test_permutation_distinct_inputs(name, params):
-    prim = XHash(params)
-    inp1 = [prim.F.random_element() for _ in range(prim.t)]
-    inp2 = [prim.F.random_element() for _ in range(prim.t)]
+    P = XHashPerm(params)
+    inp1 = [P.F.random_element() for _ in range(P.t)]
+    inp2 = [P.F.random_element() for _ in range(P.t)]
     while inp1 == inp2:
-        inp2 = [prim.F.random_element() for _ in range(prim.t)]
-    assert prim.permutation(inp1) != prim.permutation(inp2)
+        inp2 = [P.F.random_element() for _ in range(P.t)]
+    assert P.permute(inp1) != P.permute(inp2)
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +269,6 @@ def test_too_few_rcons_rejected(name, inst, cpolys, skipbox):
 # ---------------------------------------------------------------------------
 
 def test_invalid_state_size():
-    prim = XHash(XHASH12_GOLDILOCKS_T12)
+    P = XHashPerm(XHASH12_GOLDILOCKS_T12)
     with pytest.raises(ValueError):
-        prim.permutation([prim.F.zero()] * (prim.t + 1))
+        P.permute([P.F.zero()] * (P.t + 1))

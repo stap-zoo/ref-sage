@@ -1,25 +1,18 @@
 # hash.py
-# ---------------------------------------------------------------------------
-# pSquare-hash: the permutation (round function) and the hash modes built on it.
-#
-# Constructed from a fully-specified pSquare-hashParams object. 
-# ---------------------------------------------------------------------------
+# pSquare-hash: pSquareHashPerm (permutation) and its mode functions (pSquareHashHash, pSquareHashCompress).
 
 from psquarehash.params import pSquareHashParams
 from utils.matrix import matvecmul, vecadd, vecsub
-from utils.mode import compress_davies_meyer
+from utils.primitive import Permutation, HashFunction, CompressionFunction
 
 
-class pSquareHash:
+class pSquareHashPerm(Permutation):
     # ---------------------------------------------------------------------------
     # Initialization
     # ---------------------------------------------------------------------------
 
     def __init__(self, params: pSquareHashParams):
-        self.F = params.F
-        self.to_field = params.to_field
-        self.from_field = params.from_field
-        self.t = params.t
+        super().__init__(params)  # F, to_field, from_field, t, p, kappa, toy
 
         # Rounds
         self.R = params.R
@@ -32,9 +25,6 @@ class pSquareHash:
 
         # Constants
         self.rcons = params.rcons
-
-        # Hash modes
-        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Component functions
@@ -89,7 +79,7 @@ class pSquareHash:
     # Permutation
     # ---------------------------------------------------------------------------
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -99,7 +89,7 @@ class pSquareHash:
             state = self.linear_layer(state, r)
         return self._post_rounds(state)
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -109,24 +99,22 @@ class pSquareHash:
             state = self.nonlinear_layer_inv(state, r)
         return self._pre_rounds_inv(state)
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
 
-    def compress_2_to_1(self, x1: list, x2: list) -> list:
-        """Davies-Meyer 2-to-1 compression, defined when t == 2 * digest size."""
-        d = self.sponge.d # TODO replace with compression digest (usually the same)
-        if self.t != 2 * d:
-            raise ValueError(f"Compression mode not defined for state size {self.t} and digest size {d}.")
-        if len(x1) != d or len(x2) != d:
-            raise ValueError(f"Invalid input sizes. Expected ({d},{d}), got ({len(x1)},{len(x2)})")
-        return compress_davies_meyer(
-            perm=self.permutation,
-            x_m=x1,
-            x_c=x2,
-            digest_size=d,
-            to_field=self.to_field,
-        )
+# ---------------------------------------------------------------------------
+# Hash / compression functions
+#
+# pSquareHashPerm above is JUST the permutation. Each mode wraps a permutation:
+#     P = pSquareHashPerm(params)
+#     H = pSquareHashHash(P, params.sponge)      # length-encoded sponge (fixed-length input)
+#     H.hash(data, input_len_fixed=True)
+#     C = pSquareHashCompress(P, params.comp)    # 2-to-1 truncation / Davies-Meyer (t -> t/2)
+#     C.compress(x1 + x2)
+# The 2-to-1 compression (comp=dict(a=2)) is only defined for the t = 2d instances; the
+# others set comp=None (no pSquareHashCompress).
+# ---------------------------------------------------------------------------
 
-    def hash_sponge(self, data: list) -> list:
-        return self.sponge.hash(self.permutation, data, input_len_fixed=True)
+class pSquareHashHash(HashFunction):
+    SPONGE_KIND = "le"        # length-encoded sponge (fixed-length input)
+
+class pSquareHashCompress(CompressionFunction):
+    COMP_KIND = "trunc"       # 2-to-1 truncation / Davies-Meyer (comp=dict(a=2))

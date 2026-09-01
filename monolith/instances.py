@@ -1,11 +1,5 @@
 # instances.py
-# ---------------------------------------------------------------------------
-# Concrete, named parameter sets for Monolith.
-#
-# Each entry is a ready-to-use MonolithParams instance pinned to a specific
-# field from utils/field.py, so every consumer agrees on the exact same parameters.
-# Naming convention: MONOLITH_<FIELD>_<VARIANT>.
-# ---------------------------------------------------------------------------
+# Named parameter sets for Monolith (<PREFIX>_<FIELD>_<VARIANT>).
 
 from utils.field import MERSENNE31, GOLDILOCKS
 from utils.matrix import circulant
@@ -76,9 +70,7 @@ MONOLITH_M31_T16 = MonolithParams(
     si=MONOLITH_M31_SI,
     LUTs={128: LUT_7, 256: LUT_8},
     M=circulant(MONOLITH_MDS_M31_T16_ROW),
-    r=8,
-    c=8,
-    d=8,
+    sponge=dict(r=8, c=8, d=8),
 )
 
 MONOLITH_M31_T24 = MonolithParams(
@@ -89,9 +81,7 @@ MONOLITH_M31_T24 = MonolithParams(
     si=MONOLITH_M31_SI,
     LUTs={128: LUT_7, 256: LUT_8},
     M=MONOLITH_MDS_M31_T24,
-    r=16,
-    c=8,
-    d=8,
+    sponge=dict(r=16, c=8, d=8),
 )
 
 # ---------------------------------------------------------------------------
@@ -111,9 +101,7 @@ MONOLITH_GOLDILOCKS_T8 = MonolithParams(
     si=MONOLITH_GOLDILOCKS_SI,
     LUTs={256: LUT_8},
     M=circulant(MONOLITH_MDS_GOLDILOCKS_T8_ROW),
-    r=4,
-    c=4,
-    d=4,
+    sponge=dict(r=4, c=4, d=4),
 )
 
 MONOLITH_GOLDILOCKS_T12 = MonolithParams(
@@ -124,7 +112,5 @@ MONOLITH_GOLDILOCKS_T12 = MonolithParams(
     si=MONOLITH_GOLDILOCKS_SI,
     LUTs={256: LUT_8},
     M=circulant(MONOLITH_MDS_GOLDILOCKS_T12_ROW),
-    r=8,
-    c=4,
-    d=4,
+    sponge=dict(r=8, c=4, d=4),
 )

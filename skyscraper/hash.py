@@ -1,33 +1,20 @@
 # hash.py
-# ---------------------------------------------------------------------------
-# Skyscraper: the permutation (round function) and the hash modes built on it.
-#
-# Constructed from a fully-specified SkyscraperParams object.
-#
-# NOTE: the split-and-lookup S-box (_sl_sbox / _sl_sbox_inv, used by nonlinear_layer on
-# the first u branches) decomposes a field element into bytes and applies a
-# precomputed LUT. It is therefore inherently NON-generic -- it operates on the
-# integer representation and cannot run symbolically over a polynomial ring,
-# unlike the power-map branch of nonlinear_layer and the AffineLayer. This is a
-# deliberate exception to the "generic component" contract.
-# ---------------------------------------------------------------------------
+# Skyscraper: SkyscraperPerm (permutation) and its mode functions (SkyscraperHash, SkyscraperCompress).
+# NOTE: uses a lookup-table S-box -- non-generic (cannot run symbolically over a polynomial ring).
 
 from skyscraper.params import SkyscraperParams
 from utils.matrix import vecadd, vecsub
 from utils.lut import mixed_radix_decompose, mixed_radix_compose
 from utils.poly import eval_aos
-from utils.mode import compress_davies_meyer
+from utils.primitive import Permutation, HashFunction, CompressionFunction
 
 
-class Skyscraper:
+class SkyscraperPerm(Permutation):
     def __init__(self, params: SkyscraperParams):
-        self.F = params.F
-        self.to_field = params.to_field
-        self.from_field = params.from_field
+        super().__init__(params)  # F, to_field, from_field, t, p, kappa, toy
 
-        # Extension degree and Feistel state size (t = 2*n base-field elements)
+        # Extension degree (Feistel state size t = 2*n base-field elements)
         self.n = params.n
-        self.t = params.t
 
         # Square layer
         self.cpolys = params.cpolys
@@ -45,7 +32,6 @@ class Skyscraper:
         self.rcons = params.rcons
 
         # Hash modes
-        self.sponge = params.sponge
 
     # ---------------------------------------------------------------------------
     # Round functions (each maps one branch of n coordinates to n coordinates)
@@ -96,7 +82,7 @@ class Skyscraper:
     # Permutation
     # ---------------------------------------------------------------------------
 
-    def permutation(self, state: list) -> list:
+    def permute(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -105,7 +91,7 @@ class Skyscraper:
             xL, xR = vecadd(xR, self.round_fun(xL, i)), xL
         return xL + xR
 
-    def permutation_inv(self, state: list) -> list:
+    def permute_inv(self, state: list) -> list:
         if len(state) != self.t:
             raise ValueError(f"Invalid state size. Expected {self.t}, got {len(state)}")
 
@@ -114,27 +100,20 @@ class Skyscraper:
             xL, xR = vecsub(xR, self.round_fun(xL, i)), xL
         return xR + xL # undo last twist
 
-    # ---------------------------------------------------------------------------
-    # Hash modes
-    # ---------------------------------------------------------------------------
 
-    def compress(self, message: list) -> list:
-        """Reference 2n -> n compression: the Davies-Meyer feed-forward perm(in_L || in_R)_L + in_L over the left branch."""
-        if len(message) != self.t:
-            raise ValueError(f"compress expects {self.t} elements, got {len(message)}")
-        return compress_davies_meyer(
-            perm=self.permutation,
-            x_m=list(message[:self.n]),
-            x_c=list(message[self.n:]),
-            digest_size=self.n,
-            to_field=self.to_field,
-        )
+# ---------------------------------------------------------------------------
+# Hash / compression functions
+#
+# SkyscraperPerm above is JUST the permutation. Each mode wraps a permutation:
+#     P = SkyscraperPerm(params)
+#     H = SkyscraperHash(P, params.sponge)      # SAFE sponge
+#     C = SkyscraperCompress(P, params.comp)    # 2n -> n Davies-Meyer (trunc_n(P(x)+x))
+# The reference 2n -> n compression is exactly the truncation mode with arity 2
+# (comp=dict(a=2) -> d = t/2 = n): trunc keeps the first n of P(x)+x, i.e. the left branch.
+# ---------------------------------------------------------------------------
 
-    def compress_2_to_1(self, x1: list, x2: list) -> list:
-        """Merge two n-element digests into one (Merkle node), via compress."""
-        if len(x1) != self.n or len(x2) != self.n:
-            raise ValueError(f"Inputs must be digests of {self.n} elements, got {len(x1)} and {len(x2)}.")
-        return self.compress(list(x1) + list(x2))
+class SkyscraperHash(HashFunction):
+    SPONGE_KIND = "safe"
 
-    def hash_sponge(self, data: list) -> list:
-        return self.sponge.hash(self.permutation, data)
+class SkyscraperCompress(CompressionFunction):
+    COMP_KIND = "trunc"       # 2n -> n Davies-Meyer over the left branch (comp=dict(a=2))
